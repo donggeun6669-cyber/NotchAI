@@ -46,8 +46,9 @@ final class CodexMonitor {
     }
 
     private func replay(url: URL, lines: [String]) {
-        // The cwd is in the first line (session_meta), which the tail may not include.
-        if let first = Self.firstLine(of: url), let cwd = CodexLogParser.parse(first)?.cwd {
+        // The cwd is in the first line (session_meta), which the tail may not include. That line
+        // can be tens of KB, so take the field as text from the start of the file.
+        if let cwd = Self.sessionCWD(of: url) {
             sessionDirectory = URL(fileURLWithPath: cwd)
         }
         let parsed = lines.compactMap(CodexLogParser.parse).filter { $0.event != nil }
@@ -63,11 +64,18 @@ final class CodexMonitor {
         }
     }
 
-    private static func firstLine(of url: URL) -> String? {
+    private static func sessionCWD(of url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        let data = handle.readData(ofLength: 64 * 1024)
-        return String(decoding: data, as: UTF8.self).split(separator: "\n").first.map(String.init)
+        let head = String(decoding: handle.readData(ofLength: 4 * 1024), as: UTF8.self)
+        return cwd(inHeadText: head)
+    }
+
+    nonisolated static func cwd(inHeadText head: String) -> String? {
+        guard let start = head.range(of: "\"cwd\":\"") else { return nil }
+        let rest = head[start.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return String(rest[..<end])
     }
 }
 

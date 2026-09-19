@@ -65,6 +65,10 @@ protocol AIProvider: AnyObject {
     func cancelCommand()
     /// Forget the notch conversation; the next message starts a new one.
     func newChat()
+    /// A usage refresh request is in flight.
+    var isRefreshingUsage: Bool { get }
+    /// Sends the smallest possible request so the provider reports its current plan usage.
+    func refreshUsage()
 }
 
 extension AIProvider {
@@ -75,5 +79,16 @@ extension AIProvider {
     /// session is busy, the provider is still working.
     var displayState: AgentState {
         status.state == .idle && overview.runningCount > 0 ? .working : status.state
+    }
+}
+
+/// Where usage-refresh requests run, so they can be told apart from real sessions.
+enum UsageRefresh {
+    static let directory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/NotchAI/usage-refresh")
+
+    static func prepareDirectory() -> URL {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 }

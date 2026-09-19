@@ -48,7 +48,8 @@ struct AgentCardView: View {
                 }
                 .joined(separator: "\n"))
 
-            UsageRow(usage: overview.usage, kind: provider.kind)
+            UsageRow(usage: overview.usage, kind: provider.kind,
+                     isRefreshing: provider.isRefreshingUsage, onRefresh: provider.refreshUsage)
         }
         .padding(10)
         .background(
@@ -64,22 +65,38 @@ struct AgentCardView: View {
 private struct UsageRow: View {
     let usage: AgentOverview.Usage?
     let kind: ProviderKind
+    let isRefreshing: Bool
+    let onRefresh: () -> Void
 
     var body: some View {
-        if let usage {
-            HStack(spacing: 10) {
+        HStack(spacing: 10) {
+            if let usage {
                 UsageBar(label: "5시간", percent: usage.shortWindowPercent, resetsAt: usage.shortWindowResetsAt)
                 UsageBar(label: "주간", percent: usage.weeklyPercent, resetsAt: usage.weeklyResetsAt)
                 Spacer(minLength: 0)
-                Text(Self.age(of: usage.observedAt))
+                Text(isRefreshing ? "읽는 중…" : Self.age(of: usage.observedAt))
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.3))
                     .help("이 시각에 읽은 사용량입니다")
+            } else {
+                Text(isRefreshing ? "사용량 읽는 중…" : "사용량: ↻를 누르면 읽어옵니다")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.35))
+                Spacer(minLength: 0)
             }
-        } else {
-            Text(kind == .claude ? "사용량: Claude Code가 한 번 돌면 표시됩니다" : "사용량 기록 없음")
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.35))
+            Button(action: onRefresh) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(isRefreshing ? 0.2 : 0.5))
+                    .rotationEffect(.degrees(isRefreshing ? 180 : 0))
+                    .animation(isRefreshing ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default,
+                               value: isRefreshing)
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isRefreshing)
+            .help("지금 사용량 다시 읽기 (아주 짧은 요청 1번, 구독 사용량이 조금 듭니다)")
         }
     }
 

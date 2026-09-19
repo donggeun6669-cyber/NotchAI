@@ -28,6 +28,7 @@ final class ClaudeProvider: AIProvider {
     private(set) var availability: ProviderAvailability = .checking
     private(set) var isRunningCommand = false
     private(set) var overview = AgentOverview()
+    private(set) var isRefreshingUsage = false
 
     var model: Model = UserDefaults.standard.string(forKey: "claudeModel").flatMap(Model.init) ?? .sonnet {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "claudeModel") }
@@ -43,6 +44,8 @@ final class ClaudeProvider: AIProvider {
     @ObservationIgnored private let monitor = ClaudeCodeMonitor()
     @ObservationIgnored private var executable: URL?
     @ObservationIgnored private var process: StreamingProcess?
+    /// Held while a usage refresh runs; without it the process object (and its callbacks) went away.
+    @ObservationIgnored private var refreshProcess: StreamingProcess?
     @ObservationIgnored private var lastOverviewRefresh = Date.distantPast
 
     /// Claude's usage only arrives with the notch's own requests, so the last reading is kept.
@@ -189,5 +192,44 @@ final class ClaudeProvider: AIProvider {
     func newChat() {
         guard !isRunningCommand else { return }
         chat.reset()
+    }
+
+    /// Haiku, a one-line system prompt, no tools, no MCP, nothing saved: about 2k tokens.
+    /// The reply carries a rate_limit_event with the plan's current usage.
+    nonisolated static let usageRefreshArguments = [
+        "-p", "ok", "--output-format", "stream-json", "--verbose", "--model", "haiku",
+        "--system-prompt", "Reply with: ok", "--tools", "", "--strict-mcp-config",
+        "--no-session-persistence", "--disable-slash-commands",
+    ]
+
+    func refreshUsage() {
+        guard !isRefreshingUsage else { return }
+        isRefreshingUsage = true
+        Task { [weak self] in
+            guard let self else { return }
+            if availability != .ready { await checkAvailability() }
+            // Same rule as chat: only on a subscription login.
+            guard availability == .ready, let executable else {
+                isRefreshingUsage = false
+                return
+            }
+            let shell = await ProcessService.shell.value
+            let process = StreamingProcess(executable: executable, arguments: Self.usageRefreshArguments,
+                                           directory: UsageRefresh.prepareDirectory(),
+                                           environment: ProcessService.agentEnvironment(shell: shell))
+            process.onLine = { [weak self] line in
+                if let usage = AgentOverviewReader.claudeUsage(fromStreamLine: line) { self?.store(usage) }
+            }
+            process.onExit = { [weak self] _, _ in
+                self?.isRefreshingUsage = false
+                self?.refreshProcess = nil
+            }
+            do {
+                try process.start()
+                refreshProcess = process
+            } catch {
+                isRefreshingUsage = false
+            }
+        }
     }
 }

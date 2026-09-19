@@ -12,6 +12,7 @@ final class GPTProvider: AIProvider {
     private(set) var availability: ProviderAvailability = .checking
     private(set) var isRunningCommand = false
     private(set) var overview = AgentOverview()
+    private(set) var isRefreshingUsage = false
 
     private var chosenDirectory: URL?
     private var sessionDirectory: URL?
@@ -23,6 +24,8 @@ final class GPTProvider: AIProvider {
     @ObservationIgnored private let monitor = CodexMonitor()
     @ObservationIgnored private var executable: URL?
     @ObservationIgnored private var process: StreamingProcess?
+    /// Held while a usage refresh runs; without it the process object (and its callbacks) went away.
+    @ObservationIgnored private var refreshProcess: StreamingProcess?
     @ObservationIgnored private var lastMessage: String?
     @ObservationIgnored private var lastSessionsRefresh = Date.distantPast
     @ObservationIgnored private var lastUsageRefresh = Date.distantPast
@@ -30,6 +33,8 @@ final class GPTProvider: AIProvider {
     func start() {
         monitor.onEvent = { [weak self] event, date in
             guard let self, !self.isRunningCommand else { return }
+            // Usage refreshes are not work the user started.
+            if self.monitor.sessionDirectory?.standardizedFileURL == UsageRefresh.directory.standardizedFileURL { return }
             self.status.handle(event, at: date)
         }
         Task { await checkAvailability() }
@@ -37,7 +42,11 @@ final class GPTProvider: AIProvider {
 
     func poll() {
         monitor.poll()
-        if sessionDirectory != monitor.sessionDirectory { sessionDirectory = monitor.sessionDirectory }
+        // A usage refresh's folder is not where the user works.
+        if let directory = monitor.sessionDirectory, directory != sessionDirectory,
+           directory.standardizedFileURL != UsageRefresh.directory.standardizedFileURL {
+            sessionDirectory = directory
+        }
         if !isRunningCommand { status.expireIfStale(after: CodexMonitor.staleAfter) }
         refreshOverview()
     }
@@ -144,5 +153,43 @@ final class GPTProvider: AIProvider {
     func newChat() {
         guard !isRunningCommand else { return }
         chat.reset()
+    }
+
+    /// One short, low-effort turn in the refresh folder. Codex does not put usage in its JSON
+    /// output, but logs it with every turn; the next overview refresh reads it from there.
+    nonisolated static let usageRefreshArguments = [
+        "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only",
+        "-c", "model_reasoning_effort=\"low\"", "Reply with: ok",
+    ]
+
+    func refreshUsage() {
+        guard !isRefreshingUsage else { return }
+        isRefreshingUsage = true
+        Task { [weak self] in
+            guard let self else { return }
+            if availability != .ready { await checkAvailability() }
+            guard availability == .ready, let executable else {
+                isRefreshingUsage = false
+                return
+            }
+            let shell = await ProcessService.shell.value
+            let process = StreamingProcess(executable: executable, arguments: Self.usageRefreshArguments,
+                                           directory: UsageRefresh.prepareDirectory(),
+                                           environment: ProcessService.agentEnvironment(shell: shell))
+            process.onExit = { [weak self] _, _ in
+                guard let self else { return }
+                self.isRefreshingUsage = false
+                self.refreshProcess = nil
+                self.lastUsageRefresh = .distantPast
+                self.lastSessionsRefresh = .distantPast
+                self.refreshOverview()
+            }
+            do {
+                try process.start()
+                refreshProcess = process
+            } catch {
+                isRefreshingUsage = false
+            }
+        }
     }
 }

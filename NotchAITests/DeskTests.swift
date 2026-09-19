@@ -318,3 +318,24 @@ struct SessionCountTests {
         #expect(overview.recentIdleCount() == 1)
     }
 }
+
+struct UsageRefreshTests {
+    @Test func claudeRefreshIsTheSmallestRequest() {
+        let arguments = ClaudeProvider.usageRefreshArguments
+        #expect(arguments.contains("haiku"))
+        #expect(arguments.contains("--no-session-persistence"))
+        #expect(arguments.firstIndex(of: "--tools").map { arguments[$0 + 1] } == "")
+        #expect(!arguments.contains("--bare"))   // --bare skips the keychain, i.e. the subscription login
+    }
+
+    @Test func codexRefreshLogsAreRecognised() {
+        let refresh = #"{"type":"session_meta","payload":{"cwd":"\#(UsageRefresh.directory.path)"}}"#
+        let normal = #"{"type":"session_meta","payload":{"cwd":"/Users/x/DEAN"}}"#
+        #expect(AgentOverviewReader.codexLogStartsIn(UsageRefresh.directory, headText: refresh + "\n{}"))
+        #expect(!AgentOverviewReader.codexLogStartsIn(UsageRefresh.directory, headText: normal))
+        // Real session_meta lines are tens of KB; only the start is read.
+        let truncated = String(refresh.prefix(200))
+        #expect(AgentOverviewReader.codexLogStartsIn(UsageRefresh.directory, headText: truncated))
+        #expect(CodexMonitor.cwd(inHeadText: #"{"payload":{"id":"x","cwd":"/Users/x/DEAN","base_instructions":{"text":"#) == "/Users/x/DEAN")
+    }
+}

@@ -113,11 +113,27 @@ enum AgentOverviewReader {
         return CodexMonitor.recentLogFiles().compactMap { url in
             let modified = JSONLFollower.modificationDate(url)
             let age = Date.now.timeIntervalSince(modified)
-            guard age < window else { return nil }
+            guard age < window, !isUsageRefreshLog(url) else { return nil }
             let id = codexSessionID(fromLogName: url.lastPathComponent)
             return AgentOverview.Session(id: id, title: titles[id] ?? "Codex", isBusy: age < busyWithin,
                                          directory: nil, updatedAt: modified)
         }
+    }
+
+    /// Logs of the notch's own usage refreshes (their session starts in the refresh folder).
+    static func isUsageRefreshLog(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        let head = String(decoding: handle.readData(ofLength: 4 * 1024), as: UTF8.self)
+        return codexLogStartsIn(UsageRefresh.directory, headText: head)
+    }
+
+    /// The session_meta line (first in the log) can be tens of KB because it carries Codex's
+    /// instructions, so match its "cwd" field as text rather than parsing a truncated line.
+    /// "cwd" comes before the instructions, within the first few hundred bytes.
+    static func codexLogStartsIn(_ directory: URL, headText: String) -> Bool {
+        let path = directory.standardizedFileURL.path
+        return headText.contains("\"cwd\":\"\(path)\"") || headText.contains("\"cwd\":\"\(path)/\"")
     }
 
     /// "rollout-2026-09-18T11-59-01-01a0b273-fe64-7da3-8da3-da2f03408246.jsonl" → the UUID.
