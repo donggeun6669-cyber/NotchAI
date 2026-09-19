@@ -19,10 +19,10 @@ struct AgentCardView: View {
                     .foregroundStyle(accent)
                 StatusLabel(state: provider.displayState, accent: accent, fontSize: 10.5, showsDot: false)
                 Spacer(minLength: 4)
-                Text("실행 \(overview.runningCount) · 열림 \(overview.sessions.count)")
+                Text("작업 \(overview.runningCount) · 대기 \(overview.recentIdleCount())")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
-                    .help("작업 중인 세션 / 열려 있는 세션")
+                    .help("작업 중인 세션 / 최근 1시간 안에 쓴 대기 세션")
             }
 
             HStack(spacing: 6) {
@@ -42,7 +42,11 @@ struct AgentCardView: View {
                 }
             }
             .help(overview.sessions.sorted { $0.updatedAt > $1.updatedAt }
-                .map { ($0.isBusy ? "● " : "○ ") + $0.title }.joined(separator: "\n"))
+                .map { session in
+                    let quiet = !session.isBusy && Date.now.timeIntervalSince(session.updatedAt) >= AgentOverview.recentWindow
+                    return (session.isBusy ? "● " : "○ ") + session.title + (quiet ? " (1시간 넘게 조용함)" : "")
+                }
+                .joined(separator: "\n"))
 
             UsageRow(usage: overview.usage, kind: provider.kind)
         }

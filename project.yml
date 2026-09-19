@@ -30,6 +30,29 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dongeun.NotchAI
         ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO   # the adapter script writes into the app bundle
+    postBuildScripts:
+      # System "Now Playing" helper (Vendor/mediaremote-adapter, BSD-3). Built with CMake and
+      # copied into Contents/Resources/MediaRemoteAdapter; the app runs it through /usr/bin/perl.
+      - name: Bundle MediaRemote adapter
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          SRC="$SRCROOT/Vendor/mediaremote-adapter"
+          OUT="$SRC/build"
+          if ! command -v cmake >/dev/null; then
+            echo "warning: cmake not found; building without the Now Playing adapter (brew install cmake)"
+            exit 0
+          fi
+          cmake -S "$SRC" -B "$OUT" -DCMAKE_BUILD_TYPE=Release >/dev/null
+          cmake --build "$OUT" >/dev/null
+          DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/MediaRemoteAdapter"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          cp -R "$OUT/MediaRemoteAdapter.framework" "$DEST/"
+          cp "$OUT/MediaRemoteAdapterTestClient" "$SRC/bin/mediaremote-adapter.pl" "$SRC/LICENSE" "$DEST/"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$DEST/MediaRemoteAdapter.framework" "$DEST/MediaRemoteAdapterTestClient"
   NotchAITests:
     type: bundle.unit-test
     platform: macOS

@@ -92,10 +92,18 @@ private struct MusicPane: View {
     var body: some View {
         if let track = music.track {
             HStack(spacing: 10) {
-                Image(systemName: track.isPlaying ? "waveform" : "pause.circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(accent)
-                    .frame(width: 20)
+                if let data = track.artwork, let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 34, height: 34)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else {
+                    Image(systemName: track.isPlaying ? "waveform" : "pause.circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(accent)
+                        .frame(width: 20)
+                }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(track.title)

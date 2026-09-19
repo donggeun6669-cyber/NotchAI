@@ -13,7 +13,6 @@ struct ExpandedNotchView: View {
 
     var body: some View {
         let provider = app.selected
-        let status = provider.status
 
         VStack(spacing: 8) {
             HStack(spacing: 10) {

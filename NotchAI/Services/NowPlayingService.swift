@@ -22,15 +22,20 @@ final class NowPlayingService {
         var label: String? = nil
         /// False when the player cannot tell playing from paused (a browser tab in the background).
         var stateKnown = true
+        /// Album art (from the system Now Playing only).
+        var artwork: Data? = nil
     }
 
     enum Source: String, Equatable, Sendable {
+        /// The system's Now Playing, through mediaremote-adapter (any player).
+        case system = "System"
         case music = "Music"
         case spotify = "Spotify"
         case chrome = "Chrome"
 
         var bundleID: String {
             switch self {
+            case .system: ""
             case .music: "com.apple.Music"
             case .spotify: "com.spotify.client"
             case .chrome: "com.google.Chrome"
@@ -51,8 +56,27 @@ final class NowPlayingService {
     private var isRefreshing = false
     private var lastRefresh = Date.distantPast
     private var missedReads = 0
+    @ObservationIgnored private let mediaRemote = MediaRemoteService()
+
+    /// Prefer the system Now Playing; AppleScript polling is the fallback when it is unavailable.
+    func start() {
+        mediaRemote.onUpdate = { [weak self] found in self?.show(found) }
+        mediaRemote.start(onUnavailable: {})
+    }
+
+    func stop() {
+        mediaRemote.stop()
+    }
+
+    private func show(_ found: Track?) {
+        permissionDenied = false
+        guard found != track else { return }
+        if found?.title != track?.title, found?.isPlaying == true { changedAt = .now }
+        track = found
+    }
 
     func poll(interval: TimeInterval = 3) {
+        guard !mediaRemote.isAvailable else { return }   // the stream pushes updates itself
         guard !isRefreshing, Date.now.timeIntervalSince(lastRefresh) >= interval else { return }
         lastRefresh = .now
         isRefreshing = true
@@ -94,6 +118,10 @@ final class NowPlayingService {
 
     private func run(_ command: Command) {
         guard let source = track?.source else { return }
+        if source == .system {
+            mediaRemote.send(command)
+            return
+        }
         guard source.controllable else {
             // Chrome / the YouTube Music web app: same signal as the keyboard's ⏯ ⏭ ⏮ keys.
             if MediaKeys.isAllowed { MediaKeys.send(command) } else { MediaKeys.askForPermission() }
@@ -112,7 +140,7 @@ final class NowPlayingService {
         var paused: Track?
         var denied = false
         for source in [Source.music, .spotify, .chrome] {
-            guard await AppleScript.isRunning(bundleID: source.bundleID) else { continue }
+            guard AppleScript.isRunning(bundleID: source.bundleID) else { continue }
             let (track, notAuthorized) = await read(source)
             if notAuthorized { denied = true }
             guard let track else { continue }
@@ -124,6 +152,8 @@ final class NowPlayingService {
 
     private static func read(_ source: Source) async -> (Track?, Bool) {
         switch source {
+        case .system:
+            return (nil, false)   // streamed by MediaRemoteService, never polled
         case .music, .spotify:
             let app = source.rawValue
             let script = """

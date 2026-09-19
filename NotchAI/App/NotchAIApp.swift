@@ -33,4 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `open NotchAI.app --args -requestPermissions YES` shows all permission prompts at once.
         if UserDefaults.standard.bool(forKey: "requestPermissions") { Permissions.requestAll() }
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        app.desk.music.stop()   // do not leave the Now Playing helper running
+    }
 }

@@ -2,3 +2,4 @@ build/
 *.xcodeproj/
 .DS_Store
 xcuserdata/
+Vendor/mediaremote-adapter/build/

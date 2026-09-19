@@ -123,7 +123,8 @@ final class ClaudeProvider: AIProvider {
     func sendPrompt(_ prompt: String) {
         guard !isRunningCommand else { return }
         chat.add(.user, prompt)
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             if availability != .ready { await checkAvailability() }
             guard availability == .ready, let executable else {
                 let message = availability.message ?? "Claude Code unavailable"

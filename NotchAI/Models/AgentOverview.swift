@@ -29,6 +29,13 @@ struct AgentOverview: Equatable {
 
     var runningCount: Int { sessions.filter(\.isBusy).count }
 
+    /// Idle sessions used within the last hour. Older idle ones are still running in the
+    /// background (the desktop app keeps them), but the user no longer thinks of them as open.
+    static let recentWindow: TimeInterval = 3600
+    func recentIdleCount(now: Date = .now) -> Int {
+        sessions.filter { !$0.isBusy && now.timeIntervalSince($0.updatedAt) < Self.recentWindow }.count
+    }
+
     /// The session to name in the header: the most recent busy one, else the most recent one.
     var currentTitle: String? {
         let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }

@@ -25,6 +25,10 @@ final class DeskModel {
         }
     }
 
+    func start() {
+        music.start()
+    }
+
     func poll() {
         music.poll()
         clipboard.poll()

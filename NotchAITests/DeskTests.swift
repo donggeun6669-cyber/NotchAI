@@ -262,3 +262,50 @@ struct ChatTests {
         #expect(ClaudeProvider.arguments(prompt: "and?", model: .sonnet, conversationID: "s-1").suffix(2) == ["--resume", "s-1"])
     }
 }
+
+struct MediaRemoteTests {
+    @Test func fullThenDiffPayloadsBuildTheTrack() {
+        let full = #"{"type":"data","diff":false,"payload":{"title":"Sukidakara","artist":"Yuika","playing":true,"bundleIdentifier":"com.google.Chrome"}}"#
+        let pause = #"{"type":"data","diff":true,"payload":{"playing":false}}"#
+        var state: [String: Any] = [:]
+        for line in [full, pause] {
+            let update = MediaRemoteService.parseStreamLine(line)!
+            state = MediaRemoteService.merge(state, update.payload, isDiff: update.isDiff)
+        }
+        let track = MediaRemoteService.track(from: state)
+        #expect(track?.title == "Sukidakara")
+        #expect(track?.artist == "Yuika")
+        #expect(track?.isPlaying == false)
+        #expect(track?.label == "Chrome")
+    }
+
+    @Test func onlyOrphanedStreamsAreCleanedUp() {
+        let marker = "/Apps/NotchAI.app/Contents/Resources/MediaRemoteAdapter/mediaremote-adapter.pl"
+        let ps = """
+          101     1 /usr/bin/perl \(marker) /x/MediaRemoteAdapter.framework stream --debounce=150
+          102   500 /usr/bin/perl \(marker) /x/MediaRemoteAdapter.framework stream --debounce=150
+          103     1 /usr/bin/perl /other/script.pl stream
+          104     1 /usr/bin/perl \(marker) /x/MediaRemoteAdapter.framework send 2
+        """
+        #expect(MediaRemoteService.orphanedStreamPIDs(psOutput: ps, marker: marker) == [101])
+    }
+
+    @Test func nullRemovesAKeyAndEmptyPayloadMeansNothingPlays() {
+        let merged = MediaRemoteService.merge(["title": "A", "album": "B"], ["album": NSNull()], isDiff: true)
+        #expect(merged["album"] == nil && merged["title"] as? String == "A")
+        let cleared = MediaRemoteService.merge(["title": "A"], [:], isDiff: false)
+        #expect(MediaRemoteService.track(from: cleared) == nil)
+    }
+}
+
+struct SessionCountTests {
+    @Test func longQuietSessionsAreNotCountedAsWaiting() {
+        let overview = AgentOverview(sessions: [
+            .init(id: "1", title: "a", isBusy: true, directory: nil, updatedAt: .now.addingTimeInterval(-4000)),
+            .init(id: "2", title: "b", isBusy: false, directory: nil, updatedAt: .now.addingTimeInterval(-600)),
+            .init(id: "3", title: "c", isBusy: false, directory: nil, updatedAt: .now.addingTimeInterval(-3 * 3600)),
+        ])
+        #expect(overview.runningCount == 1)
+        #expect(overview.recentIdleCount() == 1)
+    }
+}
