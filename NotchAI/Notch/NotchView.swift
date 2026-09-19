@@ -11,6 +11,7 @@ struct NotchView: View {
     var body: some View {
         let size = model.currentSize
         let ear = NotchGeometry.earRadius
+        let compact = !model.isExpanded && model.isCompact()
 
         ZStack(alignment: .top) {
             NotchShape(earRadius: ear, bottomRadius: model.isExpanded ? 22 : 10)
@@ -20,7 +21,8 @@ struct NotchView: View {
 
             VStack(spacing: 0) {
                 CollapsedNotchView(provider: app.selected, track: app.desk.peekingTrack,
-                                   notchWidth: geometry.notchRect.width, height: geometry.notchHeight)
+                                   notchWidth: geometry.notchRect.width, height: geometry.notchHeight,
+                                   compact: compact)
                 if model.isExpanded {
                     ExpandedNotchView(app: app, notch: model)
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -40,6 +42,7 @@ struct NotchView: View {
             Button("Quit NotchAI") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: model.isExpanded)
+        .animation(.spring(response: 0.4, dampingFraction: 0.9), value: compact)
         .frame(width: geometry.windowFrame.width, height: geometry.windowFrame.height, alignment: .top)
         .environment(\.colorScheme, .dark)
     }

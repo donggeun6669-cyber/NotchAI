@@ -91,3 +91,12 @@ private let macBookPro14 = NotchGeometry(screenFrame: CGRect(x: 0, y: 0, width: 
     try await Task.sleep(for: .milliseconds(600))
     #expect(model.isExpanded)
 }
+
+@Test func idleNotchShrinksToTheCharacter() {
+    #expect(macBookPro14.compactCollapsedSize.width == 185 + NotchGeometry.compactWingWidth * 2)
+    #expect(macBookPro14.compactCollapsedSize.width < macBookPro14.collapsedSize.width)
+    // The wide-wing area is not part of the hover target while compact.
+    let wingPoint = CGPoint(x: 665 - 60, y: 970)
+    #expect(macBookPro14.hitRect(expanded: false).contains(wingPoint))
+    #expect(!macBookPro14.hitRect(expanded: false, compact: true).contains(wingPoint))
+}

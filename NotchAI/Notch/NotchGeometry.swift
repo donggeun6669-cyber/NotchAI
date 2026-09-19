@@ -5,6 +5,8 @@ import AppKit
 struct NotchGeometry: Equatable {
     /// Width of the character / status area on each side of the physical notch.
     static let wingWidth: CGFloat = 84
+    /// Narrower wings while the agent is idle: just room for the character.
+    static let compactWingWidth: CGFloat = 32
     /// Small outward curve where the panel meets the top edge of the screen.
     static let earRadius: CGFloat = 6
     /// Extra room around the panel so the expanded shadow is not clipped.
@@ -60,6 +62,10 @@ struct NotchGeometry: Equatable {
         CGSize(width: notchRect.width + Self.wingWidth * 2, height: notchHeight)
     }
 
+    var compactCollapsedSize: CGSize {
+        CGSize(width: notchRect.width + Self.compactWingWidth * 2, height: notchHeight)
+    }
+
     var expandedSize: CGSize {
         CGSize(width: max(Self.minExpandedWidth, collapsedSize.width),
                height: notchHeight + Self.expandedBodyHeight)
@@ -73,8 +79,8 @@ struct NotchGeometry: Equatable {
     }
 
     /// Area (global coordinates) that reacts to the mouse in each state.
-    func hitRect(expanded: Bool) -> CGRect {
-        let size = expanded ? expandedSize : collapsedSize
+    func hitRect(expanded: Bool, compact: Bool = false) -> CGRect {
+        let size = expanded ? expandedSize : (compact ? compactCollapsedSize : collapsedSize)
         return CGRect(x: notchRect.midX - size.width / 2, y: screenFrame.maxY - size.height,
                       width: size.width, height: size.height)
     }

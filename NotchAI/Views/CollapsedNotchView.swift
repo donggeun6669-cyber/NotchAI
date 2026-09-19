@@ -9,42 +9,53 @@ struct CollapsedNotchView: View {
     let track: NowPlayingService.Track?
     let notchWidth: CGFloat
     let height: CGFloat
+    /// Agent idle: only the character, in narrow wings.
+    var compact = false
 
     var body: some View {
         let state = provider.status.state
+        let wing = compact ? NotchGeometry.compactWingWidth : NotchGeometry.wingWidth
         HStack(spacing: 0) {
             HStack(spacing: 6) {
                 AICharacterView(kind: provider.kind, state: state, size: 16)
-                Text(provider.name)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(provider.kind.accent)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+                if !compact {
+                    Text(provider.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(provider.kind.accent)
+                        .lineLimit(1)
+                        .transition(.opacity)
+                    Spacer(minLength: 0)
+                }
             }
-            .padding(.leading, 14)
-            .frame(width: NotchGeometry.wingWidth)
+            .padding(.leading, compact ? 0 : 14)
+            .frame(width: wing)
 
             Color.clear.frame(width: notchWidth)
 
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                if let track {
-                    HStack(spacing: 4) {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(track.title)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+            if compact {
+                Color.clear.frame(width: wing)
+            } else {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    if let track {
+                        HStack(spacing: 4) {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(track.title)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .foregroundStyle(.white.opacity(0.8))
+                        .transition(.opacity)
+                    } else {
+                        StatusLabel(state: state, accent: provider.kind.accent)
                     }
-                    .foregroundStyle(.white.opacity(0.8))
-                    .transition(.opacity)
-                } else {
-                    StatusLabel(state: state, accent: provider.kind.accent)
                 }
+                .padding(.trailing, 14)
+                .frame(width: wing)
+                .transition(.opacity)
             }
-            .padding(.trailing, 14)
-            .frame(width: NotchGeometry.wingWidth)
         }
         .frame(height: height)
         .animation(.easeInOut(duration: 0.25), value: provider.kind)

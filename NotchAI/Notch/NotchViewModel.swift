@@ -16,6 +16,9 @@ final class NotchViewModel {
     /// Keeps the panel open when the mouse leaves (while typing a command, or the debug launch flag).
     private(set) var keepsOpen = false
     @ObservationIgnored var onCollapse: (() -> Void)?
+    /// Whether the collapsed notch should shrink to just the character (agent idle).
+    /// A closure so SwiftUI tracks the agent state it reads.
+    @ObservationIgnored var isCompact: () -> Bool = { false }
 
     @ObservationIgnored private var pendingChange: Task<Void, Never>?
 
@@ -23,7 +26,10 @@ final class NotchViewModel {
         self.geometry = geometry
     }
 
-    var currentSize: CGSize { isExpanded ? geometry.expandedSize : geometry.collapsedSize }
+    var currentSize: CGSize {
+        if isExpanded { return geometry.expandedSize }
+        return isCompact() ? geometry.compactCollapsedSize : geometry.collapsedSize
+    }
 
     func expand() {
         pendingChange?.cancel()
@@ -47,7 +53,8 @@ final class NotchViewModel {
     /// which decides if the window should take clicks or let them fall through.
     @discardableResult
     func updateMouse(_ point: CGPoint) -> Bool {
-        let inside = geometry.hitRect(expanded: isExpanded).insetBy(dx: -4, dy: -4).contains(point)
+        let inside = geometry.hitRect(expanded: isExpanded, compact: !isExpanded && isCompact())
+            .insetBy(dx: -4, dy: -4).contains(point)
         guard inside != isHovering else { return inside }
         isHovering = inside
         pendingChange?.cancel()
