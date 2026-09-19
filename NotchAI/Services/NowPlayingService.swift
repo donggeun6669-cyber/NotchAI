@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Foundation
 import Observation
 
@@ -33,7 +34,8 @@ final class NowPlayingService {
             }
         }
 
-        /// Only Music and Spotify can be controlled through AppleScript.
+        /// Music and Spotify are controlled through AppleScript; browser players through the
+        /// system media keys (which needs the Accessibility permission).
         var controllable: Bool { self != .chrome }
     }
 
@@ -77,8 +79,16 @@ final class NowPlayingService {
         }
     }
 
+    /// Browser players can be controlled once the user has allowed Accessibility.
+    var canUseMediaKeys: Bool { MediaKeys.isAllowed }
+
     private func run(_ command: Command) {
-        guard let source = track?.source, source.controllable else { return }
+        guard let source = track?.source else { return }
+        guard source.controllable else {
+            // Chrome / the YouTube Music web app: same signal as the keyboard's ⏯ ⏭ ⏮ keys.
+            if MediaKeys.isAllowed { MediaKeys.send(command) } else { MediaKeys.askForPermission() }
+            return
+        }
         Task {
             _ = await AppleScript.run(command.script(for: source))
             lastRefresh = .distantPast
@@ -229,5 +239,42 @@ enum AppleScript {
     static func openAutomationSettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+/// The keyboard's media keys (⏯ ⏭ ⏮), sent as system events. macOS routes them to whatever is
+/// playing — including YouTube Music in Chrome — so no browser setting has to change.
+/// Posting them requires the Accessibility permission.
+enum MediaKeys {
+    // NX_KEYTYPE_PLAY / NEXT / PREVIOUS from IOKit's ev_keymap.h
+    private static let play: Int32 = 16
+    private static let next: Int32 = 17
+    private static let previous: Int32 = 18
+
+    static var isAllowed: Bool { AXIsProcessTrusted() }
+
+    /// Shows the system prompt that leads to System Settings › Privacy & Security › Accessibility.
+    static func askForPermission() {
+        // The value of kAXTrustedCheckOptionPrompt (a global the Swift 6 compiler will not read).
+        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+    }
+
+    static func send(_ command: NowPlayingService.Command) {
+        let key = switch command {
+        case .playPause: play
+        case .next: next
+        case .previous: previous
+        }
+        post(key, down: true)
+        post(key, down: false)
+    }
+
+    private static func post(_ key: Int32, down: Bool) {
+        let flags = NSEvent.ModifierFlags(rawValue: down ? 0xa00 : 0xb00)
+        let data1 = Int((key << 16) | ((down ? 0xa : 0xb) << 8))
+        let event = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: flags,
+                                       timestamp: 0, windowNumber: 0, context: nil,
+                                       subtype: 8, data1: data1, data2: -1)
+        event?.cgEvent?.post(tap: .cghidEventTap)
     }
 }

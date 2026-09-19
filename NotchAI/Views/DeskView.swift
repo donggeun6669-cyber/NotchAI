@@ -111,12 +111,20 @@ private struct MusicPane: View {
 
                 Spacer(minLength: 4)
 
-                if track.source.controllable {
+                if track.source.controllable || music.canUseMediaKeys {
                     HStack(spacing: 10) {
                         control("backward.fill") { music.previous() }
-                        control(track.isPlaying ? "pause.fill" : "play.fill") { music.playPause() }
+                        // A browser tab does not say whether it is paused, so show a toggle there.
+                        control(!track.source.controllable ? "playpause.fill"
+                                : track.isPlaying ? "pause.fill" : "play.fill") { music.playPause() }
                         control("forward.fill") { music.next() }
                     }
+                } else {
+                    Button("재생 버튼 켜기") { MediaKeys.askForPermission() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(accent)
+                        .help("손쉬운 사용 권한을 허용하면 유튜브 뮤직 등 브라우저 재생도 조작할 수 있습니다")
                 }
             }
             .padding(.top, 2)
