@@ -1,0 +1,50 @@
+# Xcode project definition. Regenerate NotchAI.xcodeproj with: xcodegen generate
+name: NotchAI
+options:
+  bundleIdPrefix: com.dongeun
+  deploymentTarget:
+    macOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+targets:
+  NotchAI:
+    type: application
+    platform: macOS
+    sources: [NotchAI]
+    info:
+      path: NotchAI/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: NotchAI
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "26.0"
+        LSUIElement: true            # no Dock icon, no menu bar; lives in the notch only
+        NSAppleEventsUsageDescription: "지금 재생 중인 음악과 크롬에서 보고 있는 페이지를 읽기 위해 사용합니다."
+        NSHumanReadableCopyright: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dongeun.NotchAI
+        ENABLE_HARDENED_RUNTIME: NO
+  NotchAITests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [NotchAITests]
+    dependencies:
+      - target: NotchAI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dongeun.NotchAITests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  NotchAI:
+    build:
+      targets:
+        NotchAI: all
+        NotchAITests: [test]
+    test:
+      targets: [NotchAITests]
