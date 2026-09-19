@@ -167,6 +167,9 @@ private struct MoreMenu: View {
                     NSApp.deactivate()
                 }
             }
+            Button("권한 다시 요청하기 (재생 버튼 · 크롬 · 클립보드)") {
+                Permissions.requestAll()
+            }
             Toggle("Launch at Login", isOn: Binding(
                 get: { launchAtLogin },
                 set: { enable in

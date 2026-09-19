@@ -7,7 +7,7 @@ import Observation
 @MainActor
 @Observable
 final class ScheduleService {
-    static let dataURL = FileManager.default.homeDirectoryForCurrentUser
+    nonisolated static let dataURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Group Containers/group.woodsign.widgy/dean_schedule.json")
     /// The widget file is rebuilt by `calendar_sync.py`; older than this and it is probably stale.
     static let staleAfter: TimeInterval = 36 * 3600
@@ -39,6 +39,7 @@ final class ScheduleService {
     private(set) var fileMissing = false
 
     private var lastModified: Date?
+    private var isReading = false
 
     var isStale: Bool {
         guard let updated = snapshot.updated else { return true }
@@ -68,17 +69,26 @@ final class ScheduleService {
                                        to: calendar.startOfDay(for: date)).day ?? 0
     }
 
+    /// The file lives in another app's container (Widgy's), so macOS may stop the read until the
+    /// user answers its "access data from other apps" prompt. Reading off the main thread keeps
+    /// the notch responsive meanwhile — a main-thread read here once froze the app before its
+    /// window even appeared.
     func poll() {
-        let modified = try? Self.dataURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-        guard let modified else {
-            fileMissing = true
-            return
+        guard !isReading else { return }
+        isReading = true
+        let known = lastModified
+        Task.detached(priority: .utility) {
+            let url = ScheduleService.dataURL
+            let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let data = modified != nil && modified != known ? try? Data(contentsOf: url) : nil
+            await MainActor.run {
+                self.isReading = false
+                self.fileMissing = modified == nil
+                guard let modified, modified != known, let data else { return }
+                self.lastModified = modified
+                self.snapshot = ScheduleService.parse(data)
+            }
         }
-        fileMissing = false
-        guard modified != lastModified else { return }
-        lastModified = modified
-        guard let data = try? Data(contentsOf: Self.dataURL) else { return }
-        snapshot = Self.parse(data)
     }
 
     /// The widget file: CL = classes, DL = deadlines, EV = events (dates are "MM-DD").

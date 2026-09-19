@@ -13,8 +13,10 @@ final class NotchViewModel {
         didSet { if oldValue && !isExpanded { onCollapse?() } }
     }
     private(set) var isHovering = false
-    /// Keeps the panel open when the mouse leaves (while typing a command, or the debug launch flag).
+    /// Keeps the panel open when the mouse leaves: something is typed in the message field.
     private(set) var keepsOpen = false
+    /// Held open regardless of the mouse (the `-startExpanded` launch flag, for screenshots).
+    private(set) var isPinned = false
     @ObservationIgnored var onCollapse: (() -> Void)?
     /// Whether the collapsed notch should shrink to just the character (agent idle).
     /// A closure so SwiftUI tracks the agent state it reads.
@@ -41,10 +43,15 @@ final class NotchViewModel {
         isExpanded = false
     }
 
+    func pin() {
+        isPinned = true
+        expand()
+    }
+
     func setKeepsOpen(_ keep: Bool) {
         keepsOpen = keep
         // Focus left the panel while the mouse is already elsewhere: close now-ish.
-        if !keep && isExpanded && !isHovering {
+        if !keep && !isPinned && isExpanded && !isHovering {
             schedule(after: Self.collapseDelay) { $0.isExpanded = false }
         }
     }
@@ -61,7 +68,7 @@ final class NotchViewModel {
 
         if inside && !isExpanded {
             schedule(after: Self.expandDelay) { $0.isExpanded = true }
-        } else if !inside && isExpanded && !keepsOpen {
+        } else if !inside && isExpanded && !keepsOpen && !isPinned {
             schedule(after: Self.collapseDelay) { $0.isExpanded = false }
         }
         return inside

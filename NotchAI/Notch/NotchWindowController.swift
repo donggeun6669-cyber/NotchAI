@@ -55,10 +55,7 @@ final class NotchWindowController {
     }
 
     func show(startExpanded: Bool = false) {
-        if startExpanded {
-            model.setKeepsOpen(true)
-            model.expand()
-        }
+        if startExpanded { model.pin() }
         panel.setFrame(model.geometry.windowFrame, display: true)
         panel.orderFrontRegardless()
 

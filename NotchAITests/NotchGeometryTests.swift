@@ -100,3 +100,13 @@ private let macBookPro14 = NotchGeometry(screenFrame: CGRect(x: 0, y: 0, width: 
     #expect(macBookPro14.hitRect(expanded: false).contains(wingPoint))
     #expect(!macBookPro14.hitRect(expanded: false, compact: true).contains(wingPoint))
 }
+
+@MainActor
+@Test func pinnedPanelStaysOpenWhenTheFieldLosesFocus() async throws {
+    let model = NotchViewModel(geometry: macBookPro14)
+    model.pin()
+    model.setKeepsOpen(false)
+    model.updateMouse(CGPoint(x: 100, y: 100))
+    try await Task.sleep(for: .milliseconds(600))
+    #expect(model.isExpanded)
+}
