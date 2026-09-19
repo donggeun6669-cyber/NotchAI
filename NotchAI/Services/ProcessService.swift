@@ -231,7 +231,7 @@ final class JSONLFollower {
         urls.max { modificationDate($0) < modificationDate($1) }
     }
 
-    static func modificationDate(_ url: URL) -> Date {
+    nonisolated static func modificationDate(_ url: URL) -> Date {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
     }
 

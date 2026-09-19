@@ -12,6 +12,15 @@ cd "$(dirname "$0")/.."
 #   sudo xcodebuild -runFirstLaunch
 # Until both are done, fall back to compiling with the Command Line Tools and assembling the
 # app bundle by hand. `-showsdks` fails if either step is missing, so it is the readiness test.
+# Sign with the "Apple Development" certificate when there is one. macOS ties permissions
+# (Accessibility, controlling Chrome, clipboard) to the signature: with the throwaway ad-hoc
+# signature every rebuild looked like a new app and those permissions had to be granted again.
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')
+SIGN_ARGS=()
+if [[ -n "$IDENTITY" ]]; then
+  SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$IDENTITY")
+fi
+
 # `xcodebuild -showsdks` still succeeds when the first-launch packages are missing, so the only
 # reliable test is trying the build and falling back if it fails.
 xcode_build() {
@@ -19,7 +28,7 @@ xcode_build() {
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
   xcodegen generate --quiet &&
     xcodebuild -project NotchAI.xcodeproj -scheme NotchAI -configuration Release \
-      -derivedDataPath build build -quiet
+      -derivedDataPath build build -quiet "${SIGN_ARGS[@]}"
 }
 
 if [[ "${1:-}" == "test" ]]; then
@@ -60,7 +69,7 @@ else
 <key>NSAppleEventsUsageDescription</key><string>지금 재생 중인 음악과 크롬에서 보고 있는 페이지를 읽기 위해 사용합니다.</string>
 </dict></plist>
 PLIST
-  codesign -s - --force "$APP" >/dev/null
+  codesign -s "${IDENTITY:--}" --force "$APP" >/dev/null
 fi
 
 pkill -x NotchAI 2>/dev/null || true
@@ -72,7 +81,7 @@ case "${1:-}" in
     rm -rf ~/Applications/NotchAI.app
     cp -R "$APP" ~/Applications/NotchAI.app
     open ~/Applications/NotchAI.app
-    echo "Installed: ~/Applications/NotchAI.app"
+    echo "Installed: ~/Applications/NotchAI.app ($(codesign -dvv ~/Applications/NotchAI.app 2>&1 | grep -m1 -E '^(Authority|Signature)=' ))"
     ;;
   expanded) open -n "$APP" --args -startExpanded YES ;;
   *) open -n "$APP" ;;

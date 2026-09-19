@@ -20,7 +20,7 @@ struct PromptInputView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            TextField("Ask \(provider.name)…", text: $text)
+            TextField("\(provider.name)에게 메시지…", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12.5))
                 .focused($focused)

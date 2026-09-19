@@ -7,6 +7,8 @@ struct NowPlayingTests {
         #expect(NowPlayingService.cleanBrowserTitle("NewJeans - Ditto - YouTube") == "NewJeans - Ditto")
         #expect(NowPlayingService.cleanBrowserTitle("(3) Lofi beats - YouTube") == "Lofi beats")
         #expect(NowPlayingService.cleanBrowserTitle("Some song | Spotify") == "Some song")
+        #expect(NowPlayingService.cleanBrowserTitle("이렇게 좋아해 본 적이 없어요 (inst.) | YouTube Music")
+                == "이렇게 좋아해 본 적이 없어요 (inst.)")
         #expect(NowPlayingService.cleanBrowserTitle("Plain title") == "Plain title")
     }
 
@@ -151,5 +153,96 @@ struct DraftTests {
 
         app.insertIntoDraft("\"/tmp/report.pdf\"")
         #expect(app.draft == "첫 줄 \"/tmp/report.pdf\"")
+    }
+}
+
+struct OverviewTests {
+    @Test func claudeSessionFileGivesTitleAndBusyState() {
+        let json = #"{"pid":123,"sessionId":"abc","cwd":"/Users/x/DEAN","name":"검고담임 광고영상","status":"busy","kind":"interactive","updatedAt":1789828338232}"#
+        let session = AgentOverviewReader.claudeSession(from: Data(json.utf8), isAlive: { _ in true })
+        #expect(session?.title == "검고담임 광고영상")
+        #expect(session?.isBusy == true)
+    }
+
+    @Test func exitedOrOneOffClaudeSessionsAreSkipped() {
+        let json = #"{"pid":123,"sessionId":"abc","status":"idle","kind":"interactive"}"#
+        #expect(AgentOverviewReader.claudeSession(from: Data(json.utf8), isAlive: { _ in false }) == nil)
+        let print = #"{"pid":123,"sessionId":"abc","status":"busy","kind":"print"}"#
+        #expect(AgentOverviewReader.claudeSession(from: Data(print.utf8), isAlive: { _ in true }) == nil)
+    }
+
+    @Test func unnamedClaudeSessionUsesItsFolder() {
+        let json = #"{"pid":1,"sessionId":"a","cwd":"/Users/x/ReBridge","status":"idle"}"#
+        #expect(AgentOverviewReader.claudeSession(from: Data(json.utf8), isAlive: { _ in true })?.title == "ReBridge")
+    }
+
+    @Test func claudeUsageFromRateLimitEvent() {
+        let line = #"{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":0.09,"resetsAt":1789827000},"seven_day":{"utilization":0.51,"resetsAt":1790082000}}}}"#
+        let usage = AgentOverviewReader.claudeUsage(fromStreamLine: line)
+        #expect(usage?.shortWindowPercent == 9)
+        #expect(usage?.weeklyPercent == 51)
+    }
+
+    @Test func codexUsageFromTokenCount() {
+        let line = #"{"timestamp":"2026-09-19T13:56:23.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":53.0,"window_minutes":300,"resets_at":1789845398},"secondary":{"used_percent":56.0,"window_minutes":10080,"resets_at":1789899259},"plan_type":"plus"}}}"#
+        let usage = AgentOverviewReader.codexUsage(fromLogLine: line)
+        #expect(usage?.shortWindowPercent == 53)
+        #expect(usage?.weeklyPercent == 56)
+        #expect(usage?.plan == "plus")
+    }
+
+    @Test func codexSessionIDComesFromTheLogName() {
+        #expect(AgentOverviewReader.codexSessionID(fromLogName: "rollout-2026-09-18T11-59-01-01a0b273-fe64-7da3-8da3-da2f03408246.jsonl")
+                == "01a0b273-fe64-7da3-8da3-da2f03408246")
+    }
+
+    @Test func currentTitlePrefersTheBusySession() {
+        let overview = AgentOverview(sessions: [
+            .init(id: "1", title: "idle but newer", isBusy: false, directory: nil, updatedAt: .now),
+            .init(id: "2", title: "working", isBusy: true, directory: nil, updatedAt: .now.addingTimeInterval(-60)),
+        ])
+        #expect(overview.currentTitle == "working")
+        #expect(overview.runningCount == 1)
+    }
+}
+
+@MainActor
+struct ChatTests {
+    @Test func claudeStreamBuildsAConversation() {
+        let chat = ChatSession()
+        chat.add(.user, "안녕")
+        let lines = [
+            #"{"type":"system","subtype":"init","session_id":"s-1"}"#,
+            #"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/README.md"}}]}}"#,
+            #"{"type":"assistant","message":{"content":[{"type":"text","text":"README를 읽었어요."}]}}"#,
+            #"{"type":"result","subtype":"success","is_error":false,"result":"README를 읽었어요.","session_id":"s-1"}"#,
+        ]
+        lines.flatMap(ChatStreamParser.claude).forEach(chat.apply)
+        #expect(chat.conversationID == "s-1")
+        #expect(chat.messages.map(\.role) == [.user, .assistant])   // the step is gone once answered
+        #expect(chat.messages.last?.text == "README를 읽었어요.")
+    }
+
+    @Test func codexStreamBuildsAConversation() {
+        let chat = ChatSession()
+        let lines = [
+            #"{"type":"thread.started","thread_id":"t-9"}"#,
+            #"{"type":"item.started","item":{"type":"command_execution","command":"ls"}}"#,
+            #"{"type":"item.completed","item":{"type":"agent_message","text":"파일 3개가 있어요."}}"#,
+            #"{"type":"turn.completed","usage":{}}"#,
+        ]
+        lines.flatMap(ChatStreamParser.codex).forEach(chat.apply)
+        #expect(chat.conversationID == "t-9")
+        #expect(chat.messages.map(\.text) == ["파일 3개가 있어요."])
+    }
+
+    @Test func laterTurnsResumeTheConversation() {
+        let first = GPTProvider.arguments(prompt: "hi", directory: URL(fileURLWithPath: "/tmp"), threadID: nil)
+        #expect(first.contains("-C") && !first.contains("resume"))
+        let next = GPTProvider.arguments(prompt: "and?", directory: URL(fileURLWithPath: "/tmp"), threadID: "t-9")
+        #expect(next.starts(with: ["exec", "resume"]) && next.suffix(2) == ["t-9", "and?"])
+
+        #expect(ClaudeProvider.arguments(prompt: "hi", model: .sonnet, conversationID: nil).contains("--resume") == false)
+        #expect(ClaudeProvider.arguments(prompt: "and?", model: .sonnet, conversationID: "s-1").suffix(2) == ["--resume", "s-1"])
     }
 }

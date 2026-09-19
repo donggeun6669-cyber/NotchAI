@@ -3,8 +3,8 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Body of the expanded panel: agent on top (character, status, activity, command field),
-/// desk below (music, clipboard, shelf).
+/// Body of the expanded panel: both agents at a glance on top, a chat with the selected one in
+/// the middle, the desk (today, music, clipboard, shelf) at the bottom.
 struct ExpandedNotchView: View {
     @Bindable var app: AppModel
     let notch: NotchViewModel
@@ -16,42 +16,41 @@ struct ExpandedNotchView: View {
         let status = provider.status
 
         VStack(spacing: 8) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(spacing: 10) {
-                    AICharacterView(kind: provider.kind, state: status.state, size: 44, showsMark: true)
-                        .padding(.top, 4)
-                    ProviderSelector(selection: $app.selectedKind)
-                }
-                .frame(width: 112)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(provider.name)
-                            .font(.system(size: 14, weight: .semibold))
-                        StatusLabel(state: status.state, accent: provider.kind.accent)
-                        Spacer(minLength: 4)
-                        FolderButton(provider: provider)
-                        MoreMenu(app: app)
+            HStack(spacing: 10) {
+                ForEach(app.providers, id: \.kind) { item in
+                    AgentCardView(provider: item, isSelected: item.kind == app.selectedKind) {
+                        app.selectedKind = item.kind
                     }
-
-                    Text(status.currentTask ?? "No active task")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.white.opacity(status.currentTask == nil ? 0.45 : 0.92))
-                        .lineLimit(1)
-
-                    if let note = note(provider: provider) {
-                        Text(note.text)
-                            .font(.system(size: 11))
-                            .foregroundStyle(note.color)
-                            .lineLimit(1)
-                    }
-
-                    ActivityListView(activities: status.activities, accent: provider.kind.accent)
-                        .padding(.top, 1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: 118)
+
+            HStack(spacing: 8) {
+                Text("대화 · \(provider.name)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(provider.kind.accent)
+                if let note = note(provider: provider) {
+                    Text(note.text)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(note.color)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                FolderButton(provider: provider)
+                Button {
+                    provider.newChat()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(provider.chat.messages.isEmpty ? 0.25 : 0.6))
+                }
+                .buttonStyle(.plain)
+                .disabled(provider.chat.messages.isEmpty || provider.isRunningCommand)
+                .help("새 대화")
+                MoreMenu(app: app)
+            }
+
+            ChatView(provider: provider)
+                .frame(maxHeight: .infinity)
 
             PromptInputView(provider: provider,
                             chrome: app.desk.chrome,
@@ -98,19 +97,11 @@ struct ExpandedNotchView: View {
         }
     }
 
-    /// Setup problems first, then the latest result / error / approval message.
+    /// Setup problems (not logged in, CLI missing) for the chat header. Replies and errors of the
+    /// notch conversation appear in the chat itself.
     private func note(provider: any AIProvider) -> (text: String, color: Color)? {
-        if let message = provider.availability.message, provider.availability != .checking {
-            return (message, Color(nsColor: CharacterState.attentionYellow).opacity(0.9))
-        }
-        let status = provider.status
-        guard let detail = status.detail, !detail.isEmpty else { return nil }
-        let color: Color = switch status.state {
-        case .error: Color(nsColor: CharacterState.errorRed)
-        case .waitingForApproval: Color(nsColor: CharacterState.attentionYellow)
-        default: .white.opacity(0.6)
-        }
-        return (detail, color)
+        guard let message = provider.availability.message, provider.availability != .checking else { return nil }
+        return (message, Color(nsColor: CharacterState.attentionYellow).opacity(0.9))
     }
 }
 

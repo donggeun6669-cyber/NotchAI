@@ -4,7 +4,7 @@ import Foundation
 /// `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. Read-only.
 @MainActor
 final class CodexMonitor {
-    static let sessionsURL = FileManager.default.homeDirectoryForCurrentUser
+    nonisolated static let sessionsURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".codex/sessions")
     static let recentWindow: TimeInterval = 30 * 60
     static let staleAfter: TimeInterval = 10 * 60
@@ -15,17 +15,8 @@ final class CodexMonitor {
     private let follower: JSONLFollower
 
     init() {
-        follower = JSONLFollower {
-            // Today's and yesterday's folders are enough to find the active session.
-            let calendar = Calendar.current
-            return [Date.now, calendar.date(byAdding: .day, value: -1, to: .now) ?? .now].flatMap { day in
-                let parts = calendar.dateComponents([.year, .month, .day], from: day)
-                let folder = Self.sessionsURL.appendingPathComponent(
-                    String(format: "%04d/%02d/%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0))
-                return ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
-                    .filter { $0.pathExtension == "jsonl" }
-            }
-        }
+        // Today's and yesterday's folders are enough to find the active session.
+        follower = JSONLFollower { Self.recentLogFiles(days: 2) }
         follower.onSwitch = { [weak self] url, lines in
             guard let self else { return }
             let fresh = Date.now.timeIntervalSince(JSONLFollower.modificationDate(url)) < Self.recentWindow
@@ -40,6 +31,19 @@ final class CodexMonitor {
     }
 
     func poll() { follower.poll() }
+
+    /// Session logs from the last `days` day folders (`sessions/YYYY/MM/DD/*.jsonl`).
+    nonisolated static func recentLogFiles(days: Int = 2) -> [URL] {
+        let calendar = Calendar.current
+        return (0..<days).flatMap { offset -> [URL] in
+            let day = calendar.date(byAdding: .day, value: -offset, to: .now) ?? .now
+            let parts = calendar.dateComponents([.year, .month, .day], from: day)
+            let folder = sessionsURL.appendingPathComponent(
+                String(format: "%04d/%02d/%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0))
+            return ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+                .filter { $0.pathExtension == "jsonl" }
+        }
+    }
 
     private func replay(url: URL, lines: [String]) {
         // The cwd is in the first line (session_meta), which the tail may not include.

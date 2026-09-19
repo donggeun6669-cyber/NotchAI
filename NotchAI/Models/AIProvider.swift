@@ -53,15 +53,27 @@ protocol AIProvider: AnyObject {
     var workingDirectory: URL? { get set }
     /// A command started from the notch is still running.
     var isRunningCommand: Bool { get }
+    /// Open sessions, the current one's title, and plan usage.
+    var overview: AgentOverview { get }
+    /// The conversation held from the notch.
+    var chat: ChatSession { get }
 
     func start()
     /// Called about once a second to pick up new session activity.
     func poll()
     func sendPrompt(_ prompt: String)
     func cancelCommand()
+    /// Forget the notch conversation; the next message starts a new one.
+    func newChat()
 }
 
 extension AIProvider {
     var name: String { kind.displayName }
     var currentState: AgentState { status.state }
+
+    /// State to show. The transcript follower sees only the newest session; if another open
+    /// session is busy, the provider is still working.
+    var displayState: AgentState {
+        status.state == .idle && overview.runningCount > 0 ? .working : status.state
+    }
 }

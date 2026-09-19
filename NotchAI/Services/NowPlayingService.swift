@@ -47,6 +47,7 @@ final class NowPlayingService {
 
     private var isRefreshing = false
     private var lastRefresh = Date.distantPast
+    private var missedReads = 0
 
     func poll(interval: TimeInterval = 3) {
         guard !isRefreshing, Date.now.timeIntervalSince(lastRefresh) >= interval else { return }
@@ -56,6 +57,12 @@ final class NowPlayingService {
             let (found, denied) = await Self.currentTrack()
             isRefreshing = false
             permissionDenied = denied
+            // One empty read (a song changing, Chrome busy) should not blank the track.
+            if found == nil, track != nil, missedReads < 1 {
+                missedReads += 1
+                return
+            }
+            missedReads = 0
             guard found != track else { return }
             if found?.title != track?.title, found != nil { changedAt = .now }
             track = found
@@ -133,14 +140,18 @@ final class NowPlayingService {
         case .chrome:
             // Chrome's AppleScript has no "is playing" for tabs, so list the tabs of music sites
             // (the YouTube Music app is a Chrome web app, so its window is listed here too).
+            // Two Apple Events per window (all URLs, all titles) instead of two per tab: with many
+            // tabs open, asking tab by tab took longer than the timeout and the track vanished.
             let script = """
             tell application "Google Chrome"
                 set out to ""
                 repeat with w in windows
-                    repeat with t in tabs of w
-                        set u to URL of t
+                    set us to URL of every tab of w
+                    set ts to title of every tab of w
+                    repeat with i from 1 to count of us
+                        set u to item i of us
                         if u contains "music.youtube.com" or u contains "youtube.com/watch" or u contains "open.spotify.com" or u contains "soundcloud.com" then
-                            set out to out & u & "|||" & (title of t) & linefeed
+                            set out to out & u & "|||" & (item i of ts) & linefeed
                         end if
                     end repeat
                 end repeat
@@ -188,7 +199,8 @@ final class NowPlayingService {
     /// "Song name - YouTube" → "Song name".
     nonisolated static func cleanBrowserTitle(_ title: String) -> String {
         var text = title
-        for suffix in [" - YouTube", " - YouTube Music", " | Spotify", " - SoundCloud", " - Netflix"] {
+        for suffix in [" - YouTube Music", " | YouTube Music", " - YouTube", " | YouTube",
+                       " | Spotify", " - SoundCloud", " - Netflix"] {
             if text.hasSuffix(suffix) { text.removeLast(suffix.count) }
         }
         if text.hasPrefix("(") , let close = text.firstIndex(of: ")") {   // "(3) Title" unread badge
@@ -218,7 +230,7 @@ enum AppleScript {
 
     static func run(_ script: String) async -> Result {
         let output = try? await ProcessService.run(URL(fileURLWithPath: "/usr/bin/osascript"),
-                                                   arguments: ["-e", script], timeout: 5)
+                                                   arguments: ["-e", script], timeout: 8)
         guard let output else { return .failed }
         return classify(output)
     }

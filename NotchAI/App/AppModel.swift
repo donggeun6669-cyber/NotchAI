@@ -30,7 +30,7 @@ final class AppModel {
     }
 
     /// Every agent idle: the collapsed notch can shrink to just the characters.
-    var allIdle: Bool { providers.allSatisfy { $0.status.state == .idle } }
+    var allIdle: Bool { providers.allSatisfy { $0.displayState == .idle } }
 
     @ObservationIgnored private var pollTimer: Timer?
 

@@ -16,8 +16,8 @@ struct CollapsedNotchView: View {
     var body: some View {
         let wing = compact ? NotchGeometry.compactWingWidth : NotchGeometry.wingWidth
         // The track peeks on the right if GPT is idle, otherwise on the left if Claude is.
-        let trackOnRight = track != nil && right.status.state == .idle
-        let trackOnLeft = track != nil && !trackOnRight && left.status.state == .idle
+        let trackOnRight = track != nil && right.displayState == .idle
+        let trackOnLeft = track != nil && !trackOnRight && left.displayState == .idle
 
         HStack(spacing: 0) {
             WingView(provider: left, track: trackOnLeft ? track : nil, compact: compact)
@@ -38,7 +38,7 @@ private struct WingView: View {
     let compact: Bool
 
     var body: some View {
-        let state = provider.status.state
+        let state = provider.displayState
         HStack(spacing: 6) {
             AICharacterView(kind: provider.kind, state: state, size: 16)
             if !compact {

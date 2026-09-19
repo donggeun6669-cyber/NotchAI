@@ -2,11 +2,11 @@ import Foundation
 import Observation
 import os
 
-/// Claude Code. Watches its transcripts, and runs `claude -p` for commands sent from the notch.
+/// Claude Code. Watches its sessions, and talks through `claude -p` for the notch chat.
 @MainActor
 @Observable
 final class ClaudeProvider: AIProvider {
-    /// Which model notch commands use. Sonnet by default: the notch is for quick tasks, and
+    /// Which model notch messages use. Sonnet by default: the notch is for quick questions, and
     /// this keeps the subscription's usage window for the long sessions.
     enum Model: String, CaseIterable, Identifiable {
         case sonnet, opus, configured
@@ -24,8 +24,10 @@ final class ClaudeProvider: AIProvider {
 
     let kind = ProviderKind.claude
     let status = AgentStatus()
+    let chat = ChatSession()
     private(set) var availability: ProviderAvailability = .checking
     private(set) var isRunningCommand = false
+    private(set) var overview = AgentOverview()
 
     var model: Model = UserDefaults.standard.string(forKey: "claudeModel").flatMap(Model.init) ?? .sonnet {
         didSet { UserDefaults.standard.set(model.rawValue, forKey: "claudeModel") }
@@ -41,6 +43,14 @@ final class ClaudeProvider: AIProvider {
     @ObservationIgnored private let monitor = ClaudeCodeMonitor()
     @ObservationIgnored private var executable: URL?
     @ObservationIgnored private var process: StreamingProcess?
+    @ObservationIgnored private var lastOverviewRefresh = Date.distantPast
+
+    /// Claude's usage only arrives with the notch's own requests, so the last reading is kept.
+    private static let usageKey = "claudeUsage"
+    @ObservationIgnored private var storedUsage: AgentOverview.Usage? = {
+        guard let data = UserDefaults.standard.data(forKey: usageKey) else { return nil }
+        return try? JSONDecoder().decode(AgentOverview.Usage.self, from: data)
+    }()
 
     func start() {
         monitor.onEvent = { [weak self] event, date in
@@ -54,6 +64,22 @@ final class ClaudeProvider: AIProvider {
         monitor.poll()
         if sessionDirectory != monitor.sessionDirectory { sessionDirectory = monitor.sessionDirectory }
         if !isRunningCommand { status.expireIfStale(after: ClaudeCodeMonitor.staleAfter) }
+        refreshOverview()
+    }
+
+    private func refreshOverview() {
+        guard Date.now.timeIntervalSince(lastOverviewRefresh) >= 3 else { return }
+        lastOverviewRefresh = .now
+        let sessions = AgentOverviewReader.claudeSessions()
+        let subagents = AgentOverviewReader.claudeSubagentsRunning(sessionIDs: sessions.filter(\.isBusy).map(\.id))
+        let updated = AgentOverview(sessions: sessions, subagentsRunning: subagents, usage: storedUsage)
+        if updated != overview { overview = updated }
+    }
+
+    private func store(_ usage: AgentOverview.Usage) {
+        storedUsage = usage
+        if let data = try? JSONEncoder().encode(usage) { UserDefaults.standard.set(data, forKey: Self.usageKey) }
+        overview.usage = usage
     }
 
     func checkAvailability() async {
@@ -70,7 +96,7 @@ final class ClaudeProvider: AIProvider {
             .info("claude availability: \(String(describing: self.availability), privacy: .public)")
     }
 
-    /// Commands are only sent with a subscription login. An API-key / Console login bills per
+    /// Messages are only sent with a subscription login. An API-key / Console login bills per
     /// request, so it is refused (the user's rule: no paid API calls).
     nonisolated static func availability(fromAuthStatus output: String) -> ProviderAvailability {
         guard let object = try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
@@ -86,28 +112,41 @@ final class ClaudeProvider: AIProvider {
         return .ready
     }
 
+    /// Arguments for one chat turn; later turns resume the same conversation.
+    nonisolated static func arguments(prompt: String, model: Model, conversationID: String?) -> [String] {
+        var arguments = ["-p", prompt, "--output-format", "stream-json", "--verbose",
+                         "--permission-mode", "acceptEdits"] + model.flag
+        if let conversationID { arguments += ["--resume", conversationID] }
+        return arguments
+    }
+
     func sendPrompt(_ prompt: String) {
         guard !isRunningCommand else { return }
+        chat.add(.user, prompt)
         Task {
             if availability != .ready { await checkAvailability() }
             guard availability == .ready, let executable else {
-                status.handle(.failed(availability.message ?? "Claude Code unavailable"))
+                let message = availability.message ?? "Claude Code unavailable"
+                chat.add(.error, message)
+                status.handle(.failed(message))
                 return
             }
             let directory = workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser
             let shell = await ProcessService.shell.value
-            // Headless run: file edits are allowed, other tools that need permission are refused
+            // Headless: file edits are allowed, other tools that need permission are refused
             // (there is nobody to answer the prompt).
             let process = StreamingProcess(
                 executable: executable,
-                arguments: ["-p", prompt, "--output-format", "stream-json", "--verbose",
-                            "--permission-mode", "acceptEdits"] + model.flag,
+                arguments: Self.arguments(prompt: prompt, model: model, conversationID: chat.conversationID),
                 directory: directory,
                 environment: ProcessService.agentEnvironment(shell: shell))
             process.onLine = { [weak self] line in
+                guard let self else { return }
+                if let usage = AgentOverviewReader.claudeUsage(fromStreamLine: line) { self.store(usage) }
+                ChatStreamParser.claude(line).forEach(self.chat.apply)
                 guard let entry = ClaudeTranscriptParser.parse(line) else { return }
                 if case .promptSubmitted = entry.event { return }
-                self?.status.handle(entry.event)
+                self.status.handle(entry.event)
             }
             process.onExit = { [weak self] code, errors in
                 guard let self else { return }
@@ -117,7 +156,9 @@ final class ClaudeProvider: AIProvider {
                 if code == 0 {
                     self.status.handle(.completed(nil))
                 } else {
-                    self.status.handle(.failed(ClaudeTranscriptParser.summary(errors.isEmpty ? "Exited with code \(code)" : errors)))
+                    let message = ClaudeTranscriptParser.summary(errors.isEmpty ? "Exited with code \(code)" : errors)
+                    self.chat.apply(.failed(message))
+                    self.status.handle(.failed(message))
                 }
             }
             status.handle(.promptSubmitted(ClaudeTranscriptParser.summary(prompt)))
@@ -126,6 +167,7 @@ final class ClaudeProvider: AIProvider {
                 self.process = process
                 isRunningCommand = true
             } catch {
+                chat.apply(.failed(error.localizedDescription))
                 status.handle(.failed(error.localizedDescription))
             }
         }
@@ -133,6 +175,12 @@ final class ClaudeProvider: AIProvider {
 
     func cancelCommand() {
         process?.terminate()
+        chat.apply(.failed("멈춤"))
         status.handle(.interrupted)
+    }
+
+    func newChat() {
+        guard !isRunningCommand else { return }
+        chat.reset()
     }
 }
