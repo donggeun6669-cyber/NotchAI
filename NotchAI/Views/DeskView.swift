@@ -115,7 +115,7 @@ private struct MusicPane: View {
                     HStack(spacing: 10) {
                         control("backward.fill") { music.previous() }
                         // A browser tab does not say whether it is paused, so show a toggle there.
-                        control(!track.source.controllable ? "playpause.fill"
+                        control(!track.stateKnown ? "playpause.fill"
                                 : track.isPlaying ? "pause.fill" : "play.fill") { music.playPause() }
                         control("forward.fill") { music.next() }
                     }
@@ -166,7 +166,7 @@ private struct ClipsPane: View {
 
     var body: some View {
         if clipboard.entries.isEmpty {
-            Text("복사한 내용이 여기에 쌓입니다 (앱을 끄면 사라짐)")
+            Text("복사한 내용이 여기에 쌓입니다 (최근 12개)")
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.35))
                 .padding(.top, 6)

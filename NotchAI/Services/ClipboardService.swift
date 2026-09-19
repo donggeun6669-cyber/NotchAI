@@ -1,21 +1,45 @@
 import AppKit
 import Observation
 
-/// Recent clipboard entries, kept in memory only (never written to disk) and capped, so the
-/// history disappears when the app quits.
+/// Recent clipboard entries, capped. Kept in a file only this user can read
+/// (`~/Library/Application Support/NotchAI/clipboard.json`) so they survive restarts.
+/// Items marked as concealed by password managers are never recorded.
 @MainActor
 @Observable
 final class ClipboardService {
-    struct Entry: Identifiable, Equatable {
-        let id = UUID()
+    struct Entry: Identifiable, Equatable, Codable {
+        var id = UUID()
         let text: String
         let date: Date
     }
 
+    static let storeURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/NotchAI/clipboard.json")
+
     static let limit = 12
 
-    private(set) var entries: [Entry] = []
+    private(set) var entries: [Entry] = [] {
+        didSet { save() }
+    }
     private var lastChangeCount = NSPasteboard.general.changeCount
+    private let storeURL: URL?
+
+    /// `storeURL: nil` keeps the history in memory only (tests).
+    init(storeURL: URL? = ClipboardService.storeURL) {
+        self.storeURL = storeURL
+        guard let storeURL, let data = try? Data(contentsOf: storeURL),
+              let saved = try? JSONDecoder().decode([Entry].self, from: data) else { return }
+        entries = Array(saved.prefix(Self.limit))
+    }
+
+    private func save() {
+        guard let storeURL else { return }
+        let fm = FileManager.default
+        try? fm.createDirectory(at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        try? data.write(to: storeURL, options: .atomic)
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storeURL.path)
+    }
 
     /// Password managers mark their items with these types; those are skipped.
     private static let concealedTypes: Set<String> = [

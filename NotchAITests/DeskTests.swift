@@ -23,6 +23,15 @@ struct NowPlayingTests {
         #expect(track?.label == "YouTube Music")
     }
 
+    @Test func frontTabPlayStateComesFromTheSpeakerMark() {
+        let paused = NowPlayingService.browserTrack(fromTabList: "https://music.youtube.com/watch?v=a|||Song | YouTube Music|||0")
+        #expect(paused?.isPlaying == false && paused?.stateKnown == true)
+        let background = NowPlayingService.browserTrack(fromTabList: "https://music.youtube.com/watch?v=a|||Song | YouTube Music|||?")
+        #expect(background?.stateKnown == false)
+        let list = "https://www.youtube.com/watch?v=x|||Paused video - YouTube|||0\nhttps://music.youtube.com/watch?v=a|||Playing song | YouTube Music|||1"
+        #expect(NowPlayingService.browserTrack(fromTabList: list)?.title == "Playing song")
+    }
+
     @Test func idleMusicHomePageIsNotATrack() {
         #expect(NowPlayingService.browserTrack(fromTabList: "https://music.youtube.com/|||YouTube Music") == nil)
         #expect(NowPlayingService.parseBrowserTitle("Ditto • NewJeans", site: "open.spotify.com")?.artist == "NewJeans")
@@ -48,8 +57,15 @@ struct NowPlayingTests {
 
 @MainActor
 struct ClipboardTests {
+    @Test func historySurvivesARestart() {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("clip-\(UUID().uuidString).json")
+        ClipboardService(storeURL: url).record("keep me")
+        #expect(ClipboardService(storeURL: url).entries.first?.text == "keep me")
+        try? FileManager.default.removeItem(at: url)
+    }
+
     @Test func newestFirstNoDuplicatesAndCapped() {
-        let clipboard = ClipboardService()
+        let clipboard = ClipboardService(storeURL: nil)
         for index in 0..<(ClipboardService.limit + 4) {
             clipboard.record("item \(index)")
         }
@@ -62,7 +78,7 @@ struct ClipboardTests {
     }
 
     @Test func blankTextIsIgnored() {
-        let clipboard = ClipboardService()
+        let clipboard = ClipboardService(storeURL: nil)
         clipboard.record("   \n ")
         #expect(clipboard.entries.isEmpty)
     }

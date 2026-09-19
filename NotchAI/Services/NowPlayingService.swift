@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Foundation
 import Observation
+import os
 
 /// What is playing right now.
 ///
@@ -19,6 +20,8 @@ final class NowPlayingService {
         var isPlaying: Bool
         /// Where it plays, as shown to the user ("Music", "YouTube Music", …).
         var label: String? = nil
+        /// False when the player cannot tell playing from paused (a browser tab in the background).
+        var stateKnown = true
     }
 
     enum Source: String, Equatable, Sendable {
@@ -142,16 +145,28 @@ final class NowPlayingService {
             // (the YouTube Music app is a Chrome web app, so its window is listed here too).
             // Two Apple Events per window (all URLs, all titles) instead of two per tab: with many
             // tabs open, asking tab by tab took longer than the timeout and the track vanished.
+            // Chrome ends a window's name with "🔊" while its active tab plays sound, which tells
+            // playing from paused for the tab in front (third field: 1 / 0 / ? when not in front).
             let script = """
             tell application "Google Chrome"
                 set out to ""
                 repeat with w in windows
                     set us to URL of every tab of w
                     set ts to title of every tab of w
+                    set frontIndex to active tab index of w
+                    set speaking to (name of w) contains "🔊"
                     repeat with i from 1 to count of us
                         set u to item i of us
                         if u contains "music.youtube.com" or u contains "youtube.com/watch" or u contains "open.spotify.com" or u contains "soundcloud.com" then
-                            set out to out & u & "|||" & (item i of ts) & linefeed
+                            set playState to "?"
+                            if i = frontIndex then
+                                if speaking then
+                                    set playState to "1"
+                                else
+                                    set playState to "0"
+                                end if
+                            end if
+                            set out to out & u & "|||" & (item i of ts) & "|||" & playState & linefeed
                         end if
                     end repeat
                 end repeat
@@ -166,14 +181,19 @@ final class NowPlayingService {
 
     /// Picks the music tab from "url|||title" lines: YouTube Music first, then YouTube, Spotify, SoundCloud.
     nonisolated static func browserTrack(fromTabList list: String) -> Track? {
-        let tabs = list.split(separator: "\n").compactMap { line -> (url: String, title: String)? in
+        let tabs = list.split(separator: "\n").compactMap { line -> (url: String, title: String, playing: Bool?)? in
             let parts = line.components(separatedBy: "|||")
             guard parts.count >= 2 else { return nil }
-            return (parts[0], parts[1...].joined(separator: "|||").trimmingCharacters(in: .whitespaces))
+            let playing: Bool? = parts.count >= 3 ? (parts[2] == "1" ? true : parts[2] == "0" ? false : nil) : nil
+            return (parts[0], parts[1].trimmingCharacters(in: .whitespaces), playing)
         }
+        // A tab known to be playing wins over one that may be paused.
+        let ordered = tabs.filter { $0.playing == true } + tabs.filter { $0.playing != true }
         for site in ["music.youtube.com", "youtube.com/watch", "open.spotify.com", "soundcloud.com"] {
-            for tab in tabs where tab.url.contains(site) {
-                guard let track = parseBrowserTitle(tab.title, site: site) else { continue }
+            for tab in ordered where tab.url.contains(site) {
+                guard var track = parseBrowserTitle(tab.title, site: site) else { continue }
+                track.isPlaying = tab.playing ?? true
+                track.stateKnown = tab.playing != nil
                 return track
             }
         }
@@ -232,7 +252,12 @@ enum AppleScript {
         let output = try? await ProcessService.run(URL(fileURLWithPath: "/usr/bin/osascript"),
                                                    arguments: ["-e", script], timeout: 8)
         guard let output else { return .failed }
-        return classify(output)
+        let result = classify(output)
+        if case .failed = result {
+            Logger(subsystem: "com.dongeun.NotchAI", category: "music")
+                .info("osascript failed: \(output.prefix(300), privacy: .public)")
+        }
+        return result
     }
 
     /// osascript writes errors to the same stream as the result.
