@@ -16,6 +16,8 @@ final class NowPlayingService {
         var artist: String
         var source: Source
         var isPlaying: Bool
+        /// Where it plays, as shown to the user ("Music", "YouTube Music", …).
+        var label: String? = nil
     }
 
     enum Source: String, Equatable, Sendable {
@@ -119,22 +121,58 @@ final class NowPlayingService {
             return (Track(title: parts[0], artist: parts[1], source: source,
                           isPlaying: parts[2].contains("playing")), false)
         case .chrome:
-            // Chrome marks tabs that are making sound with "audible".
+            // Chrome's AppleScript has no "is playing" for tabs, so list the tabs of music sites
+            // (the YouTube Music app is a Chrome web app, so its window is listed here too).
             let script = """
             tell application "Google Chrome"
+                set out to ""
                 repeat with w in windows
                     repeat with t in tabs of w
-                        if audible of t then return title of t
+                        set u to URL of t
+                        if u contains "music.youtube.com" or u contains "youtube.com/watch" or u contains "open.spotify.com" or u contains "soundcloud.com" then
+                            set out to out & u & "|||" & (title of t) & linefeed
+                        end if
                     end repeat
                 end repeat
+                return out
             end tell
-            return ""
             """
             let result = await AppleScript.run(script)
-            guard let title = result.value, !title.isEmpty else { return (nil, result == .notAuthorized) }
-            return (Track(title: Self.cleanBrowserTitle(title), artist: "Chrome", source: .chrome,
-                          isPlaying: true), false)
+            guard let list = result.value else { return (nil, result == .notAuthorized) }
+            return (Self.browserTrack(fromTabList: list), false)
         }
+    }
+
+    /// Picks the music tab from "url|||title" lines: YouTube Music first, then YouTube, Spotify, SoundCloud.
+    nonisolated static func browserTrack(fromTabList list: String) -> Track? {
+        let tabs = list.split(separator: "\n").compactMap { line -> (url: String, title: String)? in
+            let parts = line.components(separatedBy: "|||")
+            guard parts.count >= 2 else { return nil }
+            return (parts[0], parts[1...].joined(separator: "|||").trimmingCharacters(in: .whitespaces))
+        }
+        for site in ["music.youtube.com", "youtube.com/watch", "open.spotify.com", "soundcloud.com"] {
+            for tab in tabs where tab.url.contains(site) {
+                guard let track = parseBrowserTitle(tab.title, site: site) else { continue }
+                return track
+            }
+        }
+        return nil
+    }
+
+    /// Title of a music tab → track. Returns nil for a page that is not playing anything
+    /// (e.g. the YouTube Music home page, titled just "YouTube Music").
+    nonisolated static func parseBrowserTitle(_ raw: String, site: String) -> Track? {
+        let title = cleanBrowserTitle(raw)
+        guard !title.isEmpty, title != "YouTube Music", title != "YouTube", title != "Spotify" else { return nil }
+        let label = site.contains("music.youtube") ? "YouTube Music"
+            : site.contains("youtube") ? "YouTube"
+            : site.contains("spotify") ? "Spotify Web" : "SoundCloud"
+        // "Song • Artist" (Spotify web) → split.
+        let parts = title.components(separatedBy: " • ")
+        if parts.count >= 2 {
+            return Track(title: parts[0], artist: parts[1...].joined(separator: " • "), source: .chrome, isPlaying: true, label: label)
+        }
+        return Track(title: title, artist: "", source: .chrome, isPlaying: true, label: label)
     }
 
     /// "Song name - YouTube" → "Song name".

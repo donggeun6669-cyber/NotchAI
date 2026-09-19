@@ -23,9 +23,14 @@ final class AppModel {
         focusRequestedAt = .now
     }
 
-    var selected: any AIProvider {
-        providers.first { $0.kind == selectedKind } ?? providers[0]
+    var selected: any AIProvider { provider(selectedKind) }
+
+    func provider(_ kind: ProviderKind) -> any AIProvider {
+        providers.first { $0.kind == kind } ?? providers[0]
     }
+
+    /// Every agent idle: the collapsed notch can shrink to just the characters.
+    var allIdle: Bool { providers.allSatisfy { $0.status.state == .idle } }
 
     @ObservationIgnored private var pollTimer: Timer?
 

@@ -102,7 +102,8 @@ private struct MusicPane: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
-                    Text("\(track.artist) · \(track.source.rawValue)")
+                    Text([track.artist, track.label ?? track.source.rawValue]
+                        .filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.system(size: 10.5))
                         .foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1)

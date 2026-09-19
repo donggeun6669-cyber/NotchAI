@@ -37,10 +37,8 @@ final class NotchWindowController {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true    // clicks fall through until the mouse is over the panel
 
-        // Idle and nothing new playing: only the character stays beside the notch.
-        model.isCompact = { [app] in
-            app.selected.status.state == .idle && app.desk.peekingTrack == nil
-        }
+        // Both agents idle and nothing new playing: only the characters stay beside the notch.
+        model.isCompact = { [app] in app.allIdle && app.desk.peekingTrack == nil }
 
         let hosting = NSHostingView(rootView: NotchView(model: model, app: app))
         hosting.sizingOptions = []         // the window frame comes from NotchGeometry, not SwiftUI

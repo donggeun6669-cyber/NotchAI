@@ -20,7 +20,8 @@ struct NotchView: View {
                 .shadow(color: .black.opacity(model.isExpanded ? 0.4 : 0), radius: 14, y: 6)
 
             VStack(spacing: 0) {
-                CollapsedNotchView(provider: app.selected, track: app.desk.peekingTrack,
+                CollapsedNotchView(left: app.provider(.claude), right: app.provider(.gpt),
+                                   track: app.desk.peekingTrack,
                                    notchWidth: geometry.notchRect.width, height: geometry.notchHeight,
                                    compact: compact)
                 if model.isExpanded {

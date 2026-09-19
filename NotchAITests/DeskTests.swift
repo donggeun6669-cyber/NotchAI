@@ -10,6 +10,22 @@ struct NowPlayingTests {
         #expect(NowPlayingService.cleanBrowserTitle("Plain title") == "Plain title")
     }
 
+    @Test func musicTabsInChromeAreFound() {
+        let list = """
+        https://www.google.com/search?q=x|||x - Google Search
+        https://music.youtube.com/watch?v=abc|||Hype Boy - YouTube Music
+        https://www.youtube.com/watch?v=def|||(2) Lofi beats - YouTube
+        """
+        let track = NowPlayingService.browserTrack(fromTabList: list)
+        #expect(track?.title == "Hype Boy")
+        #expect(track?.label == "YouTube Music")
+    }
+
+    @Test func idleMusicHomePageIsNotATrack() {
+        #expect(NowPlayingService.browserTrack(fromTabList: "https://music.youtube.com/|||YouTube Music") == nil)
+        #expect(NowPlayingService.parseBrowserTitle("Ditto • NewJeans", site: "open.spotify.com")?.artist == "NewJeans")
+    }
+
     @Test func onlyMusicAndSpotifyCanBeControlled() {
         #expect(NowPlayingService.Source.music.controllable)
         #expect(NowPlayingService.Source.spotify.controllable)

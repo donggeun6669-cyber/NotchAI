@@ -4,7 +4,7 @@ import AppKit
 /// Pure values (no NSScreen inside) so it can be unit-tested.
 struct NotchGeometry: Equatable {
     /// Width of the character / status area on each side of the physical notch.
-    static let wingWidth: CGFloat = 84
+    static let wingWidth: CGFloat = 112
     /// Narrower wings while the agent is idle: just room for the character.
     static let compactWingWidth: CGFloat = 32
     /// Small outward curve where the panel meets the top edge of the screen.
