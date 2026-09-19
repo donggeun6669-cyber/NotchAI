@@ -199,6 +199,15 @@ struct OverviewTests {
         #expect(usage?.weeklyPercent == 51)
     }
 
+    @Test func claudeUsageFromStatuslineFile() {
+        let json = #"{"observedAt":1789831171,"rate_limits":{"five_hour":{"used_percentage":25.4,"resets_at":1789846200},"seven_day":{"used_percentage":55,"resets_at":"2026-09-23T05:00:00Z"}}}"#
+        let usage = AgentOverviewReader.claudeUsage(fromStatuslineData: Data(json.utf8))
+        #expect(usage?.shortWindowPercent == 25.4)
+        #expect(usage?.weeklyPercent == 55)
+        #expect(usage?.weeklyResetsAt != nil)
+        #expect(usage?.observedAt == Date(timeIntervalSince1970: 1789831171))
+    }
+
     @Test func codexUsageFromTokenCount() {
         let line = #"{"timestamp":"2026-09-19T13:56:23.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":53.0,"window_minutes":300,"resets_at":1789845398},"secondary":{"used_percent":56.0,"window_minutes":10080,"resets_at":1789899259},"plan_type":"plus"}}}"#
         let usage = AgentOverviewReader.codexUsage(fromLogLine: line)

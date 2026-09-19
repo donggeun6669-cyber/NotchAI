@@ -72,6 +72,12 @@ final class ClaudeProvider: AIProvider {
         lastOverviewRefresh = .now
         let sessions = AgentOverviewReader.claudeSessions()
         let subagents = AgentOverviewReader.claudeSubagentsRunning(sessionIDs: sessions.filter(\.isBusy).map(\.id))
+        // The status line reading (every minute, from any Claude Code session) and the notch's own
+        // chat replies both carry usage; show whichever is newer.
+        if let fromStatusline = AgentOverviewReader.claudeUsageFromStatusline(),
+           fromStatusline.observedAt > (storedUsage?.observedAt ?? .distantPast) {
+            storedUsage = fromStatusline
+        }
         let updated = AgentOverview(sessions: sessions, subagentsRunning: subagents, usage: storedUsage)
         if updated != overview { overview = updated }
     }

@@ -75,6 +75,36 @@ enum AgentOverviewReader {
                                    plan: nil, observedAt: now)
     }
 
+    /// Written by the opt-in status line script (`claude-statusline.sh`): Claude Code passes
+    /// `rate_limits` to status lines and refreshes them every minute.
+    static let claudeStatuslineUsageURL = home
+        .appendingPathComponent("Library/Application Support/NotchAI/claude-usage.json")
+
+    static func claudeUsageFromStatusline() -> AgentOverview.Usage? {
+        guard let data = try? Data(contentsOf: claudeStatuslineUsageURL) else { return nil }
+        return claudeUsage(fromStatuslineData: data)
+    }
+
+    static func claudeUsage(fromStatuslineData data: Data) -> AgentOverview.Usage? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let limits = object["rate_limits"] as? [String: Any] else { return nil }
+        func date(_ value: Any?) -> Date? {
+            if let seconds = (value as? NSNumber)?.doubleValue { return Date(timeIntervalSince1970: seconds) }
+            return (value as? String).flatMap(ClaudeTranscriptParser.parseDate)
+        }
+        func window(_ key: String) -> (Double?, Date?) {
+            let entry = limits[key] as? [String: Any]
+            return ((entry?["used_percentage"] as? NSNumber)?.doubleValue, date(entry?["resets_at"]))
+        }
+        let short = window("five_hour")
+        let week = window("seven_day")
+        guard short.0 != nil || week.0 != nil else { return nil }
+        let observed = (object["observedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? .now
+        return AgentOverview.Usage(shortWindowPercent: short.0, weeklyPercent: week.0,
+                                   shortWindowResetsAt: short.1, weeklyResetsAt: week.1,
+                                   plan: nil, observedAt: observed)
+    }
+
     // MARK: Codex
 
     /// Codex sessions whose log was written recently. A log written in the last minute is busy.

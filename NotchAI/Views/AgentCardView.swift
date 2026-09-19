@@ -77,7 +77,7 @@ private struct UsageRow: View {
                     .help("이 시각에 읽은 사용량입니다")
             }
         } else {
-            Text(kind == .claude ? "사용량: 노치에서 한 번 대화하면 표시됩니다" : "사용량 기록 없음")
+            Text(kind == .claude ? "사용량: Claude Code가 한 번 돌면 표시됩니다" : "사용량 기록 없음")
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.35))
         }
