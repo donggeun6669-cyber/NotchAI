@@ -84,3 +84,56 @@ struct ChromeTests {
         #expect(decorated.hasSuffix("Fix the deploy"))
     }
 }
+
+struct ScheduleTests {
+    private static let sample = Data("""
+    {"updated": "2026-09-19T01:12",
+     "CL": [["09-21", "09:00", "11:45", "언어데이터과학", "31605호", ""],
+            ["09-21", "13:30", "14:45", "영미여성문학", "31703호", ""]],
+     "DL": [["09-19", "", "서포터즈 인터뷰"], ["09-20", "", "언데과 과제"], ["10-01", "", "산학 EXPO"]],
+     "EV": [["09-21", "09-21", "18:00", "20:00", "HUSS 2회차"]]}
+    """.utf8)
+
+    private static let now = ScheduleService.date("09-19", time: "10:00", now: Date(timeIntervalSince1970: 1789779600))!
+
+    @Test func parsesClassesDeadlinesAndEvents() {
+        let snapshot = ScheduleService.parse(Self.sample, now: Self.now)
+        #expect(snapshot.classes.count == 2)
+        #expect(snapshot.classes.first?.name == "언어데이터과학")
+        #expect(snapshot.classes.first?.room == "31605호")
+        #expect(snapshot.deadlines.count == 3)
+        #expect(snapshot.events.first?.title == "HUSS 2회차")
+        #expect(snapshot.updated != nil)
+    }
+
+    @Test func missingOrBrokenFileGivesAnEmptySnapshot() {
+        #expect(ScheduleService.parse(Data("not json".utf8)) == ScheduleService.Snapshot())
+    }
+
+    @Test func deadlinesCountDownFromToday() {
+        let today = ScheduleService.date("09-19", time: "12:00", now: Self.now)!
+        let tomorrow = ScheduleService.date("09-20", time: "12:00", now: Self.now)!
+        #expect(ScheduleService.daysLeft(today, from: Self.now) == 0)
+        #expect(ScheduleService.daysLeft(tomorrow, from: Self.now) == 1)
+    }
+
+    @Test func aDateFarInThePastBelongsToNextYear() {
+        // Late December, looking at a January date.
+        let december = ScheduleService.date("12-28", time: "09:00", now: Self.now)!
+        let january = ScheduleService.date("01-05", time: "09:00", now: december)!
+        #expect(january > december)
+    }
+}
+
+@MainActor
+struct DraftTests {
+    @Test func deskPutsTextIntoTheCommandField() {
+        let app = AppModel(providers: [ClaudeProvider()])
+        app.insertIntoDraft("첫 줄")
+        #expect(app.draft == "첫 줄")
+        #expect(app.focusRequestedAt != nil)
+
+        app.insertIntoDraft("\"/tmp/report.pdf\"")
+        #expect(app.draft == "첫 줄 \"/tmp/report.pdf\"")
+    }
+}

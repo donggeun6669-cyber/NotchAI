@@ -4,12 +4,14 @@ import SwiftUI
 struct PromptInputView: View {
     let provider: any AIProvider
     let chrome: ChromeService
+    @Binding var text: String
+    /// Changes when something outside asks for focus (e.g. "put in command").
+    let focusRequestedAt: Date?
     let onSend: (String) -> Void
     /// Reports whether the panel should stay open (something is typed).
     let onFocusChange: (Bool) -> Void
     let onDismiss: () -> Void
 
-    @State private var text = ""
     @FocusState private var focused: Bool
 
     private var canSend: Bool {
@@ -64,6 +66,7 @@ struct PromptInputView: View {
         // open, or it would never collapse after the field takes focus on its own.
         .onChange(of: focused) { onFocusChange(focused && !text.isEmpty) }
         .onChange(of: text) { onFocusChange(focused && !text.isEmpty) }
+        .onChange(of: focusRequestedAt) { focused = true }
     }
 
     private func send() {

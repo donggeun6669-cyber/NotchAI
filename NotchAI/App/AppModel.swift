@@ -12,6 +12,17 @@ final class AppModel {
         didSet { UserDefaults.standard.set(selectedKind.rawValue, forKey: "provider") }
     }
 
+    /// What is typed in the command field. The desk can put things here too.
+    var draft = ""
+    /// Bumped when something asks for the command field to take focus.
+    private(set) var focusRequestedAt: Date?
+
+    /// Adds text (a clipboard entry, a file path) to the command being written.
+    func insertIntoDraft(_ text: String) {
+        draft = draft.isEmpty ? text : draft + " " + text
+        focusRequestedAt = .now
+    }
+
     var selected: any AIProvider {
         providers.first { $0.kind == selectedKind } ?? providers[0]
     }

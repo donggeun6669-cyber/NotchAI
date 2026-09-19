@@ -55,14 +55,18 @@ struct ExpandedNotchView: View {
 
             PromptInputView(provider: provider,
                             chrome: app.desk.chrome,
+                            text: $app.draft,
+                            focusRequestedAt: app.focusRequestedAt,
                             onSend: { app.send($0) },
                             onFocusChange: { notch.setKeepsOpen($0) },
                             onDismiss: { notch.collapse() })
 
             Divider().overlay(.white.opacity(0.12))
 
-            DeskView(desk: app.desk, accent: provider.kind.accent)
-                .frame(height: 74)
+            DeskView(desk: app.desk, accent: provider.kind.accent,
+                     onInsert: { app.insertIntoDraft($0) },
+                     onSend: { app.send($0) })
+                .frame(height: 84)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)

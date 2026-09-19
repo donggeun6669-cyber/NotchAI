@@ -9,6 +9,7 @@ final class DeskModel {
     let clipboard = ClipboardService()
     let shelf = ShelfService()
     let chrome = ChromeService()
+    let schedule = ScheduleService()
 
     var tab: DeskView.Tab = .music {
         didSet { UserDefaults.standard.set(tab.rawValue, forKey: "deskTab") }
@@ -28,6 +29,7 @@ final class DeskModel {
         music.poll()
         clipboard.poll()
         chrome.poll()
+        schedule.poll()
     }
 
     /// A track that started in the last few seconds, for the collapsed notch peek.
