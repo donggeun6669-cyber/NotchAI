@@ -52,6 +52,8 @@ final class AgentStatus {
     /// Short message shown for completed / error / approval.
     private(set) var detail: String?
     private(set) var lastEventDate: Date?
+    /// Called for every handled event, so the activity log can keep the ones worth remembering.
+    @ObservationIgnored var onEvent: ((AgentEvent, Date) -> Void)?
 
     @ObservationIgnored private var settleTask: Task<Void, Never>?
 
@@ -102,6 +104,7 @@ final class AgentStatus {
             detail = nil
             state = .idle
         }
+        onEvent?(event, date)
     }
 
     /// A session that stopped writing while busy (closed window, crash) goes back to idle.

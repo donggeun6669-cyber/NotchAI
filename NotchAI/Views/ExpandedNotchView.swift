@@ -3,8 +3,9 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Body of the expanded panel: both agents at a glance on top, a chat with the selected one in
-/// the middle, the desk (today, music, clipboard, shelf) at the bottom.
+/// Body of the expanded panel: both agents at a glance on top, the main pane in the middle
+/// (활동 · 작업물 · 기록 · 실행, and the conversation when there is one), the command field, and
+/// the desk (today, music, clipboard, shelf, timer) at the bottom.
 struct ExpandedNotchView: View {
     @Bindable var app: AppModel
     let notch: NotchViewModel
@@ -23,32 +24,7 @@ struct ExpandedNotchView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                Text("대화 · \(provider.name)")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(provider.kind.accent)
-                if let note = note(provider: provider) {
-                    Text(note.text)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(note.color)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                FolderButton(provider: provider)
-                Button {
-                    provider.newChat()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(provider.chat.messages.isEmpty ? 0.25 : 0.6))
-                }
-                .buttonStyle(.plain)
-                .disabled(provider.chat.messages.isEmpty || provider.isRunningCommand)
-                .help("새 대화")
-                MoreMenu(app: app)
-            }
-
-            ChatView(provider: provider)
+            MainPaneView(app: app, notch: notch)
                 .frame(maxHeight: .infinity)
 
             PromptInputView(provider: provider,
@@ -63,7 +39,8 @@ struct ExpandedNotchView: View {
 
             DeskView(desk: app.desk, accent: provider.kind.accent,
                      onInsert: { app.insertIntoDraft($0) },
-                     onSend: { app.send($0) })
+                     onSend: { app.send($0) },
+                     onFocusChange: { notch.setKeepsOpen($0) })
                 .frame(height: 84)
         }
         .foregroundStyle(.white)
@@ -96,16 +73,10 @@ struct ExpandedNotchView: View {
         }
     }
 
-    /// Setup problems (not logged in, CLI missing) for the chat header. Replies and errors of the
-    /// notch conversation appear in the chat itself.
-    private func note(provider: any AIProvider) -> (text: String, color: Color)? {
-        guard let message = provider.availability.message, provider.availability != .checking else { return nil }
-        return (message, Color(nsColor: CharacterState.attentionYellow).opacity(0.9))
-    }
 }
 
 /// Shows which folder commands run in; click to pick another.
-private struct FolderButton: View {
+struct FolderButton: View {
     let provider: any AIProvider
 
     var body: some View {
@@ -144,7 +115,7 @@ private struct FolderButton: View {
     }
 }
 
-private struct MoreMenu: View {
+struct MoreMenu: View {
     let app: AppModel
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 

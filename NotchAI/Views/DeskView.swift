@@ -10,6 +10,7 @@ struct DeskView: View {
         case music = "Music"
         case clips = "Clips"
         case shelf = "Shelf"
+        case focus = "타이머"
 
         var id: String { rawValue }
         var symbol: String {
@@ -18,6 +19,7 @@ struct DeskView: View {
             case .music: "music.note"
             case .clips: "doc.on.clipboard"
             case .shelf: "tray.full"
+            case .focus: "timer"
             }
         }
     }
@@ -28,6 +30,8 @@ struct DeskView: View {
     let onInsert: (String) -> Void
     /// Sends text as a command straight away.
     let onSend: (String) -> Void
+    /// The notch must stay open while a field down here has the keyboard.
+    var onFocusChange: (Bool) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -60,6 +64,7 @@ struct DeskView: View {
                 case .music: MusicPane(music: desk.music, accent: accent)
                 case .clips: ClipsPane(clipboard: desk.clipboard, onInsert: onInsert, onSend: onSend)
                 case .shelf: ShelfPane(shelf: desk.shelf, accent: accent, onInsert: onInsert)
+                case .focus: FocusPane(focus: desk.focus, accent: accent, onFocusChange: onFocusChange)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -79,6 +84,15 @@ struct DeskView: View {
             Text("드래그해서 꺼내기")
                 .font(.system(size: 9.5))
                 .foregroundStyle(.white.opacity(0.3))
+        case .focus where desk.focus.todaySeconds > 0:
+            Button("오늘 기록 복사") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(desk.focus.summaryText(), forType: .string)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 10))
+            .foregroundStyle(.white.opacity(0.4))
+            .help("오늘 집중한 시간을 한 줄로 복사합니다 (기록에 붙여넣기)")
         default:
             EmptyView()
         }
@@ -324,5 +338,89 @@ private struct TodayPane: View {
         case 1: return "내일 \(time)"
         default: return date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)) + " " + time
         }
+    }
+}
+
+/// A stopwatch for what the user is doing, so "틀어놨다"와 "실제로 했다"가 숫자로 갈린다.
+private struct FocusPane: View {
+    let focus: FocusTimerService
+    let accent: Color
+    let onFocusChange: (Bool) -> Void
+
+    @State private var label = ""
+    @FocusState private var isEditing: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if focus.isRunning {
+                HStack(spacing: 10) {
+                    Text(FocusTimerService.clock(Int(focus.elapsed)))
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .monospacedDigit()
+                    Text(focus.label)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Button("정지") { focus.stop() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(accent)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    TextField("무엇에 집중할까요?", text: $label)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .focused($isEditing)
+                        .onSubmit { start() }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.07)))
+                    Button("시작") { start() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(accent)
+                }
+                if !focus.recentLabels.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(focus.recentLabels, id: \.self) { recent in
+                            Button {
+                                label = recent
+                                start()
+                            } label: {
+                                Text(recent)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.white.opacity(0.6))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(.white.opacity(0.07)))
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            Text(focus.todaySeconds == 0
+                 ? "오늘 기록 없음"
+                 : "오늘 " + FocusTimerService.duration(focus.todaySeconds) + " · " + focus.summaryText())
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.4))
+                .lineLimit(1)
+        }
+        .padding(.top, 2)
+        .onChange(of: isEditing) { onFocusChange(isEditing) }
+        .onDisappear { onFocusChange(false) }
+    }
+
+    private func start() {
+        focus.start(label: label)
+        label = ""
+        isEditing = false
     }
 }
