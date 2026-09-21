@@ -18,14 +18,13 @@ struct NotchView: View {
             Group {
                 if geometry.isIsland {
                     // Dynamic Island: a capsule when collapsed, a rounded panel when open.
-                    RoundedRectangle(cornerRadius: model.isExpanded ? 24 : size.height / 2, style: .continuous)
-                        .fill(.black)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: model.isExpanded ? 24 : size.height / 2, style: .continuous)
-                                .stroke(.white.opacity(0.07), lineWidth: 1))
+                    let island = RoundedRectangle(cornerRadius: model.isExpanded ? 24 : size.height / 2,
+                                                  style: .continuous)
+                    NotchBackdrop(shape: island, solidHeight: geometry.notchHeight,
+                                  isExpanded: model.isExpanded)
                 } else {
-                    NotchShape(earRadius: ear, bottomRadius: model.isExpanded ? 22 : 10)
-                        .fill(.black)
+                    NotchBackdrop(shape: NotchShape(earRadius: ear, bottomRadius: model.isExpanded ? 22 : 10),
+                                  solidHeight: geometry.notchHeight, isExpanded: model.isExpanded)
                 }
             }
             .frame(width: size.width + ear * 2, height: size.height)

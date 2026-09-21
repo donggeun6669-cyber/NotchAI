@@ -40,12 +40,13 @@ struct DeskView: View {
                             Image(systemName: tab.symbol)
                                 .font(.system(size: 9.5, weight: .semibold))
                             Text(tab.rawValue)
-                                .font(.system(size: 10.5, weight: .medium))
+                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                .tracking(0.2)
                         }
                         .foregroundStyle(desk.tab == tab ? .white.opacity(0.95) : .white.opacity(0.45))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(.white.opacity(desk.tab == tab ? 0.12 : 0)))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4.5)
+                        .background(Capsule().fill(.white.opacity(desk.tab == tab ? 0.13 : 0)))
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)

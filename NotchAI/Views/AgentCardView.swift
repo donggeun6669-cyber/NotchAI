@@ -21,26 +21,29 @@ struct AgentCardView: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
                     Text(provider.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                        .tracking(0.1)
                         .foregroundStyle(accent)
                     StatusLabel(state: provider.displayState, accent: accent, fontSize: 10.5, showsDot: false)
                     Spacer(minLength: 4)
                     Text("작업 \(overview.runningCount) · 대기 \(overview.recentIdleCount())")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .tracking(0.2)
+                        .foregroundStyle(.white.opacity(0.45))
                         .fixedSize()
                         .help("작업 중인 세션 / 최근 1시간 안에 쓴 대기 세션")
                 }
 
                 HStack(spacing: 6) {
                     Text(overview.currentTitle ?? "열린 세션 없음")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(overview.currentTitle == nil ? 0.4 : 0.9))
+                        .font(.system(size: 12.5))
+                        .tracking(0.1)
+                        .foregroundStyle(.white.opacity(overview.currentTitle == nil ? 0.35 : 0.92))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if overview.subagentsRunning > 0 {
                         Text("+ 서브에이전트 \(overview.subagentsRunning)")
-                            .font(.system(size: 9.5, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
                             .foregroundStyle(accent.opacity(0.9))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
@@ -60,12 +63,14 @@ struct AgentCardView: View {
                            onRefresh: provider.refreshUsage)
             }
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(0.09))
-                .stroke(accent.opacity(0.55), lineWidth: 1)
-        )
+        .padding(11)
+        .background {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(LinearGradient(colors: [.white.opacity(0.10), .white.opacity(0.05)],
+                                     startPoint: .top, endPoint: .bottom))
+                .stroke(LinearGradient(colors: [accent.opacity(0.5), accent.opacity(0.18)],
+                                       startPoint: .top, endPoint: .bottom), lineWidth: 0.9)
+        }
     }
 }
 
@@ -130,8 +135,9 @@ private struct UsageBar: View {
         let value = min(max(percent ?? 0, 0), 100)
         HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 9.5))
-                .foregroundStyle(.white.opacity(0.45))
+                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                .tracking(0.2)
+                .foregroundStyle(.white.opacity(0.4))
                 .frame(width: 26, alignment: .leading)
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
@@ -141,8 +147,8 @@ private struct UsageBar: View {
             }
             .frame(height: 5)
             Text(percent.map { "\(Int($0.rounded()))%" } ?? "—")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.8))
+                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.82))
                 .monospacedDigit()
                 .frame(width: 32, alignment: .trailing)
         }

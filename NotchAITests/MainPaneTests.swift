@@ -106,3 +106,12 @@ struct CodexStateTests {
         #expect(CodexStateReader.version(of: "thread_history_1.sqlite", prefix: "thread_history") == 1)
     }
 }
+
+struct IdleNoteTests {
+    @Test func openSessionsComeBeforeUsage() {
+        #expect(IdleNote.note(waiting: 3, weeklyPercent: 75) == "대기 3")
+        #expect(IdleNote.note(waiting: 0, weeklyPercent: 75) == "주간 75%")
+        // Nothing open and no reading yet: the wing stays empty rather than saying "Idle".
+        #expect(IdleNote.note(waiting: 0, weeklyPercent: nil) == nil)
+    }
+}

@@ -41,8 +41,9 @@ private struct Column<Content: View, Trailing: View>: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 4) {
                 Text(title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.3))
                 Spacer(minLength: 0)
                 trailing
             }
@@ -88,8 +89,9 @@ private struct ProviderSection: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(provider.name)
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(provider.kind.accent)
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .tracking(0.3)
+                    .foregroundStyle(provider.kind.accent.opacity(0.95))
                 if provider.overview.subagentsRunning > 0 {
                     Text("서브에이전트 \(provider.overview.subagentsRunning)")
                         .font(.system(size: 9.5))
@@ -151,8 +153,9 @@ private struct SessionRow: View {
                       : session.isBusy ? kind.accent : Color.white.opacity(0.22))
                 .frame(width: 6, height: 6)
             Text(session.title)
-                .font(.system(size: 11.5, weight: session.isBusy ? .medium : .regular))
-                .foregroundStyle(.white.opacity(session.isBusy ? 0.92 : 0.6))
+                .font(.system(size: 12, weight: session.isBusy ? .medium : .regular))
+                .tracking(0.05)
+                .foregroundStyle(.white.opacity(session.isBusy ? 0.93 : 0.58))
                 .lineLimit(1)
             if needsApproval {
                 Text("승인 대기")
@@ -181,10 +184,10 @@ private struct SessionRow: View {
                 .foregroundStyle(.white.opacity(0.3))
                 .fixedSize()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 6)
-            .fill(.white.opacity(needsApproval ? 0.1 : session.isBusy ? 0.06 : 0.03)))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(.white.opacity(needsApproval ? 0.11 : session.isBusy ? 0.065 : 0.03)))
         .contentShape(Rectangle())
         .onTapGesture { if let folder { NSWorkspace.shared.open(folder) } }
         .contextMenu {
@@ -254,15 +257,17 @@ private struct LauncherPane: View {
                                 .foregroundStyle(.white.opacity(0.45))
                                 .frame(width: 12)
                             Text(entry.name)
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(.white.opacity(0.85))
+                                .font(.system(size: 11))
+                                .tracking(0.1)
+                                .foregroundStyle(.white.opacity(0.82))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.06)))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(.white.opacity(0.055)))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

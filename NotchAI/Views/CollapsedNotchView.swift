@@ -47,13 +47,24 @@ private struct WingView: View {
                         Image(systemName: "music.note")
                             .font(.system(size: 9, weight: .semibold))
                         Text(track.title)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .tracking(0.1)
                             .lineLimit(1)
                     }
                     .foregroundStyle(.white.opacity(0.8))
                     .transition(.opacity)
                 } else if state != .idle {
                     StatusLabel(state: state, accent: provider.kind.accent, showsDot: false)
+                        .transition(.opacity)
+                } else if let note = IdleNote.text(for: provider) {
+                    // While the other side works, "Idle" says nothing. Show what is actually
+                    // worth knowing about the quiet one.
+                    Text(note)
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        .tracking(0.2)
+                        .foregroundStyle(.white.opacity(0.42))
+                        .lineLimit(1)
+                        .fixedSize()
                         .transition(.opacity)
                 }
                 Spacer(minLength: 0)
@@ -81,7 +92,8 @@ struct StatusLabel: View {
                     .frame(width: 6, height: 6)
             }
             Text(state.label)
-                .font(.system(size: fontSize, weight: .medium))
+                .font(.system(size: fontSize, weight: .medium, design: .rounded))
+                .tracking(0.25)
                 .foregroundStyle(showsDot ? .white.opacity(0.8) : state.indicatorColor(accent: accent).opacity(0.95))
                 .lineLimit(1)
                 .fixedSize()
@@ -91,5 +103,24 @@ struct StatusLabel: View {
         }
         .contentTransition(.opacity)
         .animation(.easeInOut(duration: 0.2), value: state)
+    }
+}
+
+/// What to put beside a resting agent. "Idle" is a state, not information: how many of its
+/// sessions are still open, or how much of the plan is gone, is something to act on.
+enum IdleNote {
+    /// Sessions this old are no longer "open" in the user's head.
+    static let recent: TimeInterval = 3600
+
+    @MainActor
+    static func text(for provider: any AIProvider, now: Date = .now) -> String? {
+        note(waiting: provider.overview.recentIdleCount(now: now),
+             weeklyPercent: provider.overview.usage?.weeklyPercent)
+    }
+
+    nonisolated static func note(waiting: Int, weeklyPercent: Double?) -> String? {
+        if waiting > 0 { return "대기 \(waiting)" }
+        if let weeklyPercent { return "주간 \(Int(weeklyPercent.rounded()))%" }
+        return nil
     }
 }
