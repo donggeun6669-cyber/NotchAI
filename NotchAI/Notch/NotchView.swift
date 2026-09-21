@@ -10,14 +10,27 @@ struct NotchView: View {
 
     var body: some View {
         let size = model.currentSize
-        let ear = NotchGeometry.earRadius
+        // The island floats, so it has no ears growing out of the screen edge.
+        let ear = geometry.isIsland ? 0 : NotchGeometry.earRadius
         let compact = !model.isExpanded && model.isCompact()
 
         ZStack(alignment: .top) {
-            NotchShape(earRadius: ear, bottomRadius: model.isExpanded ? 22 : 10)
-                .fill(.black)
-                .frame(width: size.width + ear * 2, height: size.height)
-                .shadow(color: .black.opacity(model.isExpanded ? 0.4 : 0), radius: 14, y: 6)
+            Group {
+                if geometry.isIsland {
+                    // Dynamic Island: a capsule when collapsed, a rounded panel when open.
+                    RoundedRectangle(cornerRadius: model.isExpanded ? 24 : size.height / 2, style: .continuous)
+                        .fill(.black)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: model.isExpanded ? 24 : size.height / 2, style: .continuous)
+                                .stroke(.white.opacity(0.07), lineWidth: 1))
+                } else {
+                    NotchShape(earRadius: ear, bottomRadius: model.isExpanded ? 22 : 10)
+                        .fill(.black)
+                }
+            }
+            .frame(width: size.width + ear * 2, height: size.height)
+            .shadow(color: .black.opacity(geometry.isIsland ? 0.5 : (model.isExpanded ? 0.4 : 0)),
+                    radius: geometry.isIsland ? 12 : 14, y: geometry.isIsland ? 4 : 6)
 
             VStack(spacing: 0) {
                 CollapsedNotchView(left: app.provider(.claude), right: app.provider(.gpt),

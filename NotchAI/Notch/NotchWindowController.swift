@@ -8,25 +8,104 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+extension Notification.Name {
+    /// Posted when the "show on every display" setting changes.
+    static let notchScreensChanged = Notification.Name("NotchAI.screensChanged")
+}
+
+/// One panel per display. The built-in screen gets the real notch; the others get the same
+/// panel hanging from the top edge, because everything in it is worth seeing from whichever
+/// screen the user is looking at.
 @MainActor
 final class NotchWindowController {
-    private let panel: NotchPanel
-    private let model: NotchViewModel
+    /// A panel and its state on one display.
+    private final class Screen {
+        let displayID: CGDirectDisplayID
+        let panel: NotchPanel
+        let model: NotchViewModel
+
+        init(displayID: CGDirectDisplayID, panel: NotchPanel, model: NotchViewModel) {
+            self.displayID = displayID
+            self.panel = panel
+            self.model = model
+        }
+    }
+
+    static let allScreensKey = "showsOnAllScreens"
+    /// Whether every display gets a panel. On by default: the user asked for all three.
+    static var showsOnAllScreens: Bool {
+        get { UserDefaults.standard.object(forKey: allScreensKey) as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: allScreensKey)
+            NotificationCenter.default.post(name: .notchScreensChanged, object: nil)
+        }
+    }
+
     private let app: AppModel
+    private var screens: [Screen] = []
     private var mouseTimer: Timer?
-    private var screenObserver: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
+    private var startExpanded = false
 
     init(app: AppModel) {
         self.app = app
-        let screen = NotchGeometry.preferredScreen()
-        let geometry = screen.map(NotchGeometry.init(screen:))
-            ?? NotchGeometry(screenFrame: .zero, safeAreaTop: 0, leftAuxiliaryWidth: nil,
-                             rightAuxiliaryWidth: nil, menuBarHeight: 0)
-        model = NotchViewModel(geometry: geometry)
+    }
 
-        panel = NotchPanel(contentRect: geometry.windowFrame,
-                           styleMask: [.borderless, .nonactivatingPanel],
-                           backing: .buffered, defer: false)
+    func show(startExpanded: Bool = false) {
+        self.startExpanded = startExpanded
+        rebuild()
+
+        // Polling the cursor needs no Accessibility / Input Monitoring permission.
+        mouseTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.trackMouse() }
+        }
+        for name in [NSApplication.didChangeScreenParametersNotification, .notchScreensChanged] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.rebuild() }
+            })
+        }
+    }
+
+    /// Displays were added, removed or rearranged: keep one panel per display in use.
+    private func rebuild() {
+        let wanted = Self.targetScreens()
+        let wantedIDs = Set(wanted.compactMap(Self.displayID))
+
+        for screen in screens where !wantedIDs.contains(screen.displayID) {
+            screen.model.collapse()
+            screen.panel.orderOut(nil)
+        }
+        screens.removeAll { !wantedIDs.contains($0.displayID) }
+
+        for nsScreen in wanted {
+            guard let id = Self.displayID(of: nsScreen) else { continue }
+            let geometry = NotchGeometry(screen: nsScreen)
+            if let existing = screens.first(where: { $0.displayID == id }) {
+                guard geometry != existing.model.geometry else { continue }
+                existing.model.collapse()
+                existing.model.geometry = geometry
+                existing.panel.setFrame(geometry.windowFrame, display: true)
+            } else {
+                screens.append(make(geometry: geometry, displayID: id))
+            }
+        }
+    }
+
+    /// Every display, or only the notched one when the user turned the others off.
+    private static func targetScreens() -> [NSScreen] {
+        guard showsOnAllScreens else { return [NotchGeometry.preferredScreen()].compactMap { $0 } }
+        return NSScreen.screens
+    }
+
+    private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    private func make(geometry: NotchGeometry, displayID: CGDirectDisplayID) -> Screen {
+        let model = NotchViewModel(geometry: geometry)
+        let panel = NotchPanel(contentRect: geometry.windowFrame,
+                               styleMask: [.borderless, .nonactivatingPanel],
+                               backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false            // SwiftUI draws its own shadow
@@ -44,46 +123,30 @@ final class NotchWindowController {
         hosting.sizingOptions = []         // the window frame comes from NotchGeometry, not SwiftUI
         panel.contentView = hosting
 
-        // Typing in the command field made the panel key. Once it closes, hand the keyboard back
-        // to the app the user was in (it stayed frontmost because the panel never activates).
+        // Typing in a field made the panel key. Once it closes, hand the keyboard back to the app
+        // the user was in (it stayed frontmost because the panel never activates).
         model.onCollapse = { [weak panel] in
             guard let panel, panel.isKeyWindow else { return }
             panel.makeFirstResponder(nil)
             let front = NSWorkspace.shared.frontmostApplication
             if front != .current { front?.activate() } else { NSApp.deactivate() }
         }
-    }
 
-    func show(startExpanded: Bool = false) {
-        if startExpanded { model.pin() }
-        panel.setFrame(model.geometry.windowFrame, display: true)
-        panel.orderFrontRegardless()
-
-        // Polling the cursor needs no Accessibility / Input Monitoring permission.
-        mouseTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.trackMouse() }
-        }
-        screenObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.relayout() }
-        }
-    }
-
-    private func trackMouse() {
-        let inside = model.updateMouse(NSEvent.mouseLocation)
-        if panel.ignoresMouseEvents == inside {
-            panel.ignoresMouseEvents = !inside
-        }
-    }
-
-    /// Displays were added, removed or rearranged: move to the notched screen (or the fallback).
-    private func relayout() {
-        guard let screen = NotchGeometry.preferredScreen() else { return }
-        let geometry = NotchGeometry(screen: screen)
-        guard geometry != model.geometry else { return }
-        model.collapse()
-        model.geometry = geometry
+        // Only the built-in screen starts pinned open (screenshots and debugging).
+        if startExpanded, geometry.hasPhysicalNotch { model.pin() }
         panel.setFrame(geometry.windowFrame, display: true)
+        panel.orderFrontRegardless()
+        return Screen(displayID: displayID, panel: panel, model: model)
+    }
+
+    /// The cursor is on one screen at a time, so at most one panel reacts to it.
+    private func trackMouse() {
+        let location = NSEvent.mouseLocation
+        for screen in screens {
+            let inside = screen.model.updateMouse(location)
+            if screen.panel.ignoresMouseEvents == inside {
+                screen.panel.ignoresMouseEvents = !inside
+            }
+        }
     }
 }

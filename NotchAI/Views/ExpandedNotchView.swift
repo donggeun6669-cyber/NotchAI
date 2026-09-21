@@ -67,6 +67,7 @@ struct ExpandedNotchView: View {
 struct MoreMenu: View {
     let app: AppModel
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var allScreens = NotchWindowController.showsOnAllScreens
 
     var body: some View {
         Menu {
@@ -86,6 +87,13 @@ struct MoreMenu: View {
                     NSApp.deactivate()
                 }
             }
+            Toggle("모든 모니터에 표시", isOn: Binding(
+                get: { allScreens },
+                set: { value in
+                    NotchWindowController.showsOnAllScreens = value
+                    allScreens = value
+                }))
+                .help("끄면 노치가 있는 내장 화면에만 표시합니다")
             Button("권한 다시 요청하기 (재생 버튼 · 크롬 · 클립보드)") {
                 Permissions.requestAll()
             }
