@@ -98,19 +98,19 @@ final class LauncherService {
     /// The places 동근님 goes back to, from what DEAN records: the university, the department,
     /// the academic calendar, the deployment dashboard, and the tools the notes keep pointing at.
     nonisolated static let sites: [Item] = [
-        Item(name: "성균관대", targets: [Target(label: "skku.edu", symbol: "globe", value: "https://www.skku.edu")]),
+        Item(name: "킹고포털", targets: [Target(label: "portal.skku.edu", symbol: "person.crop.square",
+                                            value: "https://portal.skku.edu")]),
+        Item(name: "아이캠퍼스", targets: [Target(label: "icampus.skku.edu", symbol: "book",
+                                             value: "https://icampus.skku.edu")]),
+        Item(name: "학교 공지", targets: [Target(label: "skku.edu", symbol: "megaphone",
+                                            value: "https://www.skku.edu/skku/campus/skk_comm/notice01.do")]),
         Item(name: "학사일정", targets: [Target(label: "skku.edu", symbol: "calendar",
                                             value: "https://www.skku.edu/skku/edu/bachelor/ca_de_schedule.do")]),
-        Item(name: "HUSS 학과", targets: [Target(label: "huss.skku.edu", symbol: "graduationcap",
-                                              value: "https://huss.skku.edu/")]),
+        Item(name: "성균관대", targets: [Target(label: "skku.edu", symbol: "globe", value: "https://www.skku.edu")]),
         Item(name: "Vercel", targets: [Target(label: "배포 현황", symbol: "square.stack.3d.up",
                                               value: "https://vercel.com/dashboard")]),
-        Item(name: "Notion", targets: [Target(label: "app.notion.com", symbol: "note.text",
-                                              value: "https://app.notion.com")]),
         Item(name: "Google Drive", targets: [Target(label: "drive.google.com", symbol: "externaldrive",
                                                     value: "https://drive.google.com")]),
-        Item(name: "Figma", targets: [Target(label: "figma.com", symbol: "paintbrush",
-                                             value: "https://www.figma.com/files")]),
     ]
 
     /// DEAN, then the sites, then one address per project — the page that project actually serves.
