@@ -11,9 +11,9 @@ struct ExpandedNotchView: View {
 
     @State private var isDropTarget = false
 
-    /// Both agents are always on screen, so nothing here is "selected": the accent is the
-    /// panel's own.
-    private var accent: Color { ProviderKind.claude.accent }
+    /// Both agents are always on screen, so nothing here is "selected". The panel's own accent
+    /// is the red from the wallpaper; the agent colours stay on the agents.
+    private var accent: Color { NotchPalette.red }
 
     var body: some View {
         VStack(spacing: 8) {

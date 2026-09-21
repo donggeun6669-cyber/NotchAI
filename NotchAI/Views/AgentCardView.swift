@@ -68,7 +68,7 @@ struct AgentCardView: View {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .fill(LinearGradient(colors: [.white.opacity(0.10), .white.opacity(0.05)],
                                      startPoint: .top, endPoint: .bottom))
-                .stroke(LinearGradient(colors: [accent.opacity(0.5), accent.opacity(0.18)],
+                .stroke(LinearGradient(colors: [.white.opacity(0.16), .white.opacity(0.05)],
                                        startPoint: .top, endPoint: .bottom), lineWidth: 0.9)
         }
     }
@@ -155,11 +155,8 @@ private struct UsageBar: View {
         .help(resetsAt.map { "초기화: " + $0.formatted(date: .abbreviated, time: .shortened) } ?? label)
     }
 
+    /// Quiet until it matters: plain grey, then the desk's red once the window is running out.
     private func color(_ value: Double) -> Color {
-        switch value {
-        case ..<60: Color(nsColor: CharacterState.doneGreen)
-        case ..<85: Color(nsColor: CharacterState.attentionYellow)
-        default: Color(nsColor: CharacterState.errorRed)
-        }
+        value < 70 ? .white.opacity(0.5) : NotchPalette.red
     }
 }

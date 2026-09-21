@@ -309,7 +309,7 @@ private struct TodayPane: View {
                     HStack(spacing: 6) {
                         Text("D\(days == 0 ? "-0" : "-\(days)")")
                             .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                            .foregroundStyle(days <= 1 ? Color(nsColor: CharacterState.errorRed) : accent)
+                            .foregroundStyle(days <= 1 ? accent : .white.opacity(0.45))
                             .frame(width: 26, alignment: .leading)
                         Text(deadline.title)
                             .font(.system(size: 11.5))
