@@ -12,7 +12,7 @@ struct NotchGeometry: Equatable {
     /// Extra room around the panel so the expanded shadow is not clipped.
     static let shadowPadding: CGFloat = 20
     static let minExpandedWidth: CGFloat = 640
-    static let expandedBodyHeight: CGFloat = 374
+    static let expandedBodyHeight: CGFloat = 392
     static let fallbackMenuBarHeight: CGFloat = 24
 
     let screenFrame: CGRect

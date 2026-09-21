@@ -57,6 +57,66 @@ enum CharacterAnimations {
         return animation
     }
 
+    /// An arm swinging around its shoulder. `base` is the resting angle, and the two arms are
+    /// given opposite phases so the character looks like it is working, not flapping.
+    static func armSwing(base: CGFloat, amount: CGFloat, period: Double, phase: Double = 0) -> CABasicAnimation {
+        let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+        animation.fromValue = base - amount
+        animation.toValue = base + amount
+        let swing = forever(animation, halfPeriod: period / 2)
+        if phase != 0 { swing.timeOffset = period * phase }
+        return swing
+    }
+
+    /// A drop of sweat: appears at the head, slides away, fades out, over and over.
+    static func sweat(distance: CGFloat, period: Double, delay: Double) -> CAAnimationGroup {
+        let fall = CAKeyframeAnimation(keyPath: "transform.translation")
+        fall.values = [CGPoint.zero,
+                       CGPoint(x: distance * 0.45, y: -distance * 0.35),
+                       CGPoint(x: distance, y: distance * 0.55)].map { NSValue(point: $0) }
+        fall.keyTimes = [0, 0.35, 1]
+
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0, 0.9, 0.9, 0]
+        fade.keyTimes = [0, 0.2, 0.6, 1]
+
+        let group = CAAnimationGroup()
+        group.animations = [fall, fade]
+        group.duration = period
+        group.repeatCount = .infinity
+        group.beginTime = CACurrentMediaTime() + delay
+        group.fillMode = .backwards
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        return group
+    }
+
+    /// One bubble of the thought cloud: swells into view, drifts up, fades.
+    static func thought(index: Int, period: Double, rise: CGFloat) -> CAAnimationGroup {
+        let move = CABasicAnimation(keyPath: "transform.translation.y")
+        move.fromValue = rise
+        move.toValue = -rise * 0.3
+
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [0, 0.95, 0.95, 0]
+        fade.keyTimes = [0, 0.25, 0.7, 1]
+
+        let group = CAAnimationGroup()
+        group.animations = [move, fade]
+        group.duration = period
+        group.repeatCount = .infinity
+        group.beginTime = CACurrentMediaTime() + period / 3 * Double(index)
+        group.fillMode = .backwards
+        return group
+    }
+
+    /// A slow lean back and forth, for standing around.
+    static func sway(angle: CGFloat, period: Double, base: CGFloat = 0) -> CABasicAnimation {
+        let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+        animation.fromValue = base - angle
+        animation.toValue = base + angle
+        return forever(animation, halfPeriod: period / 2)
+    }
+
     /// One dot of the "…" indicator; dots are staggered by `index`.
     static func dot(index: Int, period: Double) -> CAKeyframeAnimation {
         let animation = CAKeyframeAnimation(keyPath: "opacity")
