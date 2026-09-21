@@ -3,43 +3,32 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Body of the expanded panel: both agents at a glance on top, the main pane in the middle
-/// (활동 · 작업물 · 기록 · 실행, and the conversation when there is one), the command field, and
-/// the desk (today, music, clipboard, shelf, timer) at the bottom.
+/// Body of the expanded panel: both agents at a glance on top, then two columns — what they are
+/// doing, and what to open — and the desk (today, music, clipboard, shelf, timer) at the bottom.
 struct ExpandedNotchView: View {
     @Bindable var app: AppModel
     let notch: NotchViewModel
 
     @State private var isDropTarget = false
 
-    var body: some View {
-        let provider = app.selected
+    /// Both agents are always on screen, so nothing here is "selected": the accent is the
+    /// panel's own.
+    private var accent: Color { ProviderKind.claude.accent }
 
+    var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 ForEach(app.providers, id: \.kind) { item in
-                    AgentCardView(provider: item, isSelected: item.kind == app.selectedKind) {
-                        app.selectedKind = item.kind
-                    }
+                    AgentCardView(provider: item)
                 }
             }
 
-            MainPaneView(app: app, notch: notch)
+            MainPaneView(app: app)
                 .frame(maxHeight: .infinity)
-
-            PromptInputView(provider: provider,
-                            chrome: app.desk.chrome,
-                            text: $app.draft,
-                            focusRequestedAt: app.focusRequestedAt,
-                            onSend: { app.send($0) },
-                            onFocusChange: { notch.setKeepsOpen($0) },
-                            onDismiss: { notch.collapse() })
 
             Divider().overlay(.white.opacity(0.12))
 
-            DeskView(desk: app.desk, accent: provider.kind.accent,
-                     onInsert: { app.insertIntoDraft($0) },
-                     onSend: { app.send($0) },
+            DeskView(desk: app.desk, accent: accent,
                      onFocusChange: { notch.setKeepsOpen($0) })
                 .frame(height: 84)
         }
@@ -51,7 +40,7 @@ struct ExpandedNotchView: View {
         .background {
             if isDropTarget {
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(provider.kind.accent.opacity(0.8), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                    .stroke(accent.opacity(0.8), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
                     .padding(6)
             }
         }
@@ -73,46 +62,6 @@ struct ExpandedNotchView: View {
         }
     }
 
-}
-
-/// Shows which folder commands run in; click to pick another.
-struct FolderButton: View {
-    let provider: any AIProvider
-
-    var body: some View {
-        Button {
-            chooseFolder()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                Text(provider.workingDirectory?.lastPathComponent ?? "Choose folder")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .font(.system(size: 10.5, weight: .medium))
-            .foregroundStyle(.white.opacity(0.6))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(.white.opacity(0.08)))
-            .frame(maxWidth: 130)
-        }
-        .buttonStyle(.plain)
-        .help(provider.workingDirectory?.path ?? "Folder commands run in")
-    }
-
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = provider.workingDirectory
-        panel.prompt = "Use Folder"
-        NSApp.activate()
-        if panel.runModal() == .OK, let url = panel.url {
-            provider.workingDirectory = url
-        }
-        NSApp.deactivate()
-    }
 }
 
 struct MoreMenu: View {

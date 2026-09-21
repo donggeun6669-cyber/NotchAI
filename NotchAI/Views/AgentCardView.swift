@@ -1,11 +1,9 @@
 import SwiftUI
 
 /// One provider at a glance: state, the session it is on, how many are running, and usage.
-/// Tapping a card makes it the chat target.
+/// Both cards are always shown, both framed.
 struct AgentCardView: View {
     let provider: any AIProvider
-    let isSelected: Bool
-    let onSelect: () -> Void
 
     var body: some View {
         let overview = provider.overview
@@ -54,11 +52,9 @@ struct AgentCardView: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(isSelected ? 0.09 : 0.05))
-                .stroke(isSelected ? accent.opacity(0.55) : .white.opacity(0.06), lineWidth: 1)
+                .fill(.white.opacity(0.09))
+                .stroke(accent.opacity(0.55), lineWidth: 1)
         )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
     }
 }
 

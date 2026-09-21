@@ -1,14 +1,13 @@
 import Foundation
 import Observation
 
-/// The non-agent half of the notch: music, clipboard history, file shelf and the Chrome tab.
+/// The non-agent half of the notch: music, clipboard history, file shelf, schedule and timer.
 @MainActor
 @Observable
 final class DeskModel {
     let music = NowPlayingService()
     let clipboard = ClipboardService()
     let shelf = ShelfService()
-    let chrome = ChromeService()
     let schedule = ScheduleService()
     let focus = FocusTimerService()
 
@@ -33,7 +32,6 @@ final class DeskModel {
     func poll() {
         music.poll()
         clipboard.poll()
-        chrome.poll()
         schedule.poll()
         focus.poll()
     }

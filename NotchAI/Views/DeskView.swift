@@ -26,10 +26,6 @@ struct DeskView: View {
 
     @Bindable var desk: DeskModel
     let accent: Color
-    /// Puts text into the command field (clipboard entry, file path).
-    let onInsert: (String) -> Void
-    /// Sends text as a command straight away.
-    let onSend: (String) -> Void
     /// The notch must stay open while a field down here has the keyboard.
     var onFocusChange: (Bool) -> Void = { _ in }
 
@@ -62,8 +58,8 @@ struct DeskView: View {
                 switch desk.tab {
                 case .today: TodayPane(schedule: desk.schedule, accent: accent)
                 case .music: MusicPane(music: desk.music, accent: accent)
-                case .clips: ClipsPane(clipboard: desk.clipboard, onInsert: onInsert, onSend: onSend)
-                case .shelf: ShelfPane(shelf: desk.shelf, accent: accent, onInsert: onInsert)
+                case .clips: ClipsPane(clipboard: desk.clipboard)
+                case .shelf: ShelfPane(shelf: desk.shelf, accent: accent)
                 case .focus: FocusPane(focus: desk.focus, accent: accent, onFocusChange: onFocusChange)
                 }
             }
@@ -183,8 +179,6 @@ private struct MusicPane: View {
 
 private struct ClipsPane: View {
     let clipboard: ClipboardService
-    let onInsert: (String) -> Void
-    let onSend: (String) -> Void
 
     var body: some View {
         if clipboard.entries.isEmpty {
@@ -216,10 +210,6 @@ private struct ClipsPane: View {
                     }
                     .buttonStyle(.plain)
                     .help("클릭하면 다시 복사됩니다")
-                    .contextMenu {
-                        Button("명령에 붙이기") { onInsert(entry.text) }
-                        Button("그대로 보내기") { onSend(entry.text) }
-                    }
                 }
             }
         }
@@ -229,7 +219,6 @@ private struct ClipsPane: View {
 private struct ShelfPane: View {
     let shelf: ShelfService
     let accent: Color
-    let onInsert: (String) -> Void
 
     var body: some View {
         if shelf.items.isEmpty {
@@ -259,7 +248,10 @@ private struct ShelfPane: View {
                         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
                         .onTapGesture { shelf.revealInFinder(item) }
                         .contextMenu {
-                            Button("경로를 명령에 붙이기") { onInsert("\"\(item.url.path)\"") }
+                            Button("경로 복사") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(item.url.path, forType: .string)
+                            }
                             Button("Finder에서 보기") { shelf.revealInFinder(item) }
                             Button("치우기") { shelf.remove(item) }
                         }

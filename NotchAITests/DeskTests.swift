@@ -160,18 +160,6 @@ struct ScheduleTests {
 }
 
 @MainActor
-struct DraftTests {
-    @Test func deskPutsTextIntoTheCommandField() {
-        let app = AppModel(providers: [ClaudeProvider()])
-        app.insertIntoDraft("첫 줄")
-        #expect(app.draft == "첫 줄")
-        #expect(app.focusRequestedAt != nil)
-
-        app.insertIntoDraft("\"/tmp/report.pdf\"")
-        #expect(app.draft == "첫 줄 \"/tmp/report.pdf\"")
-    }
-}
-
 struct OverviewTests {
     @Test func claudeSessionFileGivesTitleAndBusyState() {
         let json = #"{"pid":123,"sessionId":"abc","cwd":"/Users/x/DEAN","name":"검고담임 광고영상","status":"busy","kind":"interactive","updatedAt":1789828338232}"#

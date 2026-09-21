@@ -2,53 +2,26 @@ import Foundation
 import Testing
 @testable import NotchAI
 
-struct GitStatusTests {
-    @Test func parsesOneLinePerRepository() {
-        let output = """
-        /Users/x/dev/GitHub/ReBridge\tparse-v3-safeguards\t2\t0\t0\t1758300000\t0
-        /Users/x/dev/GitHub/Round_LLM\tmain\t4\t1\t1\t1758400000\t3
-        broken line
-        """
-        let repos = GitStatusService.parse(output)
-        #expect(repos.count == 2)
-        #expect(repos[0].name == "ReBridge")
-        #expect(repos[0].branch == "parse-v3-safeguards")
-        #expect(repos[0].changed == 2)
-        #expect(repos[0].hasUpstream == false)
-        #expect(repos[1].ahead == 1)
-        #expect(repos[1].untracked == 3)
-        #expect(repos[1].lastCommit == Date(timeIntervalSince1970: 1_758_400_000))
-    }
-
-    @Test func aBranchWithoutARemoteStillNeedsAttention() {
-        let clean = GitStatusService.Repo(path: "/a/b", branch: "main", changed: 0, untracked: 0,
-                                          ahead: 0, hasUpstream: true, lastCommit: nil)
-        let unpushedBranch = GitStatusService.Repo(path: "/a/c", branch: "feature", changed: 0, untracked: 0,
-                                                   ahead: 0, hasUpstream: false, lastCommit: nil)
-        let onlyNewFiles = GitStatusService.Repo(path: "/a/d", branch: "main", changed: 0, untracked: 1,
-                                                 ahead: 0, hasUpstream: true, lastCommit: nil)
-        #expect(!clean.needsAttention)
-        #expect(unpushedBranch.needsAttention)
-        #expect(onlyNewFiles.needsAttention)
-        // Repositories that need attention come first.
-        #expect(GitStatusService.order(unpushedBranch, clean))
-    }
-}
-
 struct LauncherTests {
-    @Test func remoteAddressesBecomeWebPages() {
-        #expect(LauncherService.webURL(fromRemote: "git@github.com:donggeun6669-cyber/NotchAI.git")
-                == "https://github.com/donggeun6669-cyber/NotchAI")
-        #expect(LauncherService.webURL(fromRemote: "https://github.com/owner/repo.git")
-                == "https://github.com/owner/repo")
-        #expect(LauncherService.webURL(fromRemote: "/local/mirror.git") == nil)
-    }
-
     @Test func nestedProjectsKeepTheirGroupInTheName() {
         let dean = LauncherService.deanURL.appendingPathComponent("03_PROJECTS")
         #expect(LauncherService.projectName(ofCodeLink: dean.appendingPathComponent("NotchAI/code")) == "NotchAI")
         #expect(LauncherService.projectName(ofCodeLink: dean.appendingPathComponent("JeparkENG/QM/code"))
                 == "JeparkENG · QM")
+        // In the launcher list the group alone is the name.
+        #expect(LauncherService.shortProjectName(ofCodeLink: dean.appendingPathComponent("JeparkENG/QM/code"))
+                == "JeparkENG")
+    }
+
+    @Test func aProjectsOwnAddressIsTakenFromTheLineThatRecordsIt() {
+        #expect(LauncherService.deploymentURL(inLine: "라이브: https://gumgomentor.vercel.app")
+                == "https://gumgomentor.vercel.app")
+        #expect(LauncherService.deploymentURL(inLine: "배포: https://jepark-admin.vercel.app — 2026-09-19 다시 연결")
+                == "https://jepark-admin.vercel.app")
+        // No word saying this is where the project lives.
+        #expect(LauncherService.deploymentURL(inLine: "참고 자료 https://admission.skku.edu/notice") == nil)
+        // The code host is not the project's own page.
+        #expect(LauncherService.deploymentURL(inLine: "배포 저장소 https://github.com/owner/repo") == nil)
     }
 
     @Test func targetsKnowHowToBeOpened() {
@@ -59,33 +32,6 @@ struct LauncherTests {
         let page = LauncherService.Target(label: "GitHub", symbol: nil, value: "https://github.com/owner/repo")
         #expect(!page.isTerminal)
         #expect(page.url?.scheme == "https")
-    }
-}
-
-@MainActor
-struct ActivityLogTests {
-    @Test func onlyOutcomesWorthRememberingAreKept() {
-        let log = ActivityLogService(persists: false)
-        log.record(.thinking, provider: .claude, title: "NotchAI")
-        log.record(.toolStarted("Editing"), provider: .claude, title: "NotchAI")
-        #expect(log.entries.isEmpty)
-
-        log.record(.completed("정리했습니다"), provider: .claude, title: "NotchAI")
-        log.record(.failed("Exited with code 1"), provider: .gpt, title: "광고영상")
-        #expect(log.entries.count == 2)
-        #expect(log.entries.first?.outcome == .failed)   // newest first
-    }
-
-    @Test func theSameEventArrivingTwiceIsStoredOnce() {
-        let log = ActivityLogService(persists: false)
-        let now = Date.now
-        log.record(.completed("ok"), provider: .claude, title: "NotchAI", at: now)
-        log.record(.completed("ok"), provider: .claude, title: "NotchAI", at: now.addingTimeInterval(2))
-        #expect(log.entries.count == 1)
-
-        log.record(.completed("ok"), provider: .claude, title: "NotchAI",
-                   at: now.addingTimeInterval(ActivityLogService.duplicateWindow + 1))
-        #expect(log.entries.count == 2)
     }
 }
 

@@ -36,10 +36,6 @@ struct NotchView: View {
         .contentShape(Rectangle())
         .onTapGesture { model.expand() }
         .contextMenu {
-            ForEach(ProviderKind.allCases) { kind in
-                Button("Show \(kind.displayName)") { app.selectedKind = kind }
-            }
-            Divider()
             Button("Quit NotchAI") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: model.isExpanded)
