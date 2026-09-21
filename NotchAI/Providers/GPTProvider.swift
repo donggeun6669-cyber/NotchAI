@@ -55,7 +55,15 @@ final class GPTProvider: AIProvider {
         var updated = overview
         if Date.now.timeIntervalSince(lastSessionsRefresh) >= 5 {
             lastSessionsRefresh = .now
-            updated.sessions = AgentOverviewReader.codexSessions()
+            // The app's own state knows which threads are open and what they are called; the
+            // logs are the fallback when that cannot be read.
+            if let snapshot = CodexStateReader.read() {
+                updated.sessions = snapshot.sessions
+                updated.subagentsRunning = snapshot.subagentsRunning
+            } else {
+                updated.sessions = AgentOverviewReader.codexSessions()
+                updated.subagentsRunning = 0
+            }
         }
         // Usage is written with every Codex turn; reading the log tails every 30 s is plenty.
         if Date.now.timeIntervalSince(lastUsageRefresh) >= 30 {

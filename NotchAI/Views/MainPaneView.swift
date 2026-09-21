@@ -59,11 +59,11 @@ private struct ActivityPane: View {
     let app: AppModel
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 7) {
-                ForEach(app.providers, id: \.kind) { provider in
-                    ProviderSection(provider: provider)
-                }
+        // A fixed share each, so a busy Claude never pushes GPT off the bottom.
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(app.providers, id: \.kind) { provider in
+                ProviderSection(provider: provider)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -71,12 +71,14 @@ private struct ActivityPane: View {
 
 private struct ProviderSection: View {
     let provider: any AIProvider
-    /// More than this and the list stops being readable; the card above keeps the totals.
-    static let maxRows = 4
 
-    /// What the busy session is doing, when that is not just its own name again.
-    static func detail(for session: AgentOverview.Session, provider: any AIProvider) -> String? {
-        guard session.isBusy, let task = provider.status.currentTask, task != session.title else { return nil }
+    /// What the newest busy session is doing, when that is not just its own name again.
+    /// Only the newest one: the transcript follower watches a single session, so putting its
+    /// task next to any other row would be a guess.
+    static func detail(for session: AgentOverview.Session, newest: AgentOverview.Session?,
+                       provider: any AIProvider) -> String? {
+        guard session.isBusy, session.id == newest?.id,
+              let task = provider.status.currentTask, task != session.title else { return nil }
         return task
     }
 
@@ -119,16 +121,14 @@ private struct ProviderSection: View {
                     .foregroundStyle(.white.opacity(0.3))
                     .padding(.leading, 2)
             } else {
-                ForEach(sessions.prefix(Self.maxRows)) { session in
-                    SessionRow(session: session, kind: provider.kind,
-                               needsApproval: session.isBusy && provider.displayState == .waitingForApproval,
-                               detail: Self.detail(for: session, provider: provider))
-                }
-                if sessions.count > Self.maxRows {
-                    Text("외 \(sessions.count - Self.maxRows)개")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.3))
-                        .padding(.leading, 2)
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(sessions) { session in
+                            SessionRow(session: session, kind: provider.kind,
+                                       needsApproval: session.isBusy && provider.displayState == .waitingForApproval,
+                                       detail: Self.detail(for: session, newest: sessions.first, provider: provider))
+                        }
+                    }
                 }
             }
         }

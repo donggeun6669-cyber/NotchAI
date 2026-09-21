@@ -15,8 +15,7 @@ final class CodexMonitor {
     private let follower: JSONLFollower
 
     init() {
-        // Today's and yesterday's folders are enough to find the active session.
-        follower = JSONLFollower { Self.recentLogFiles(days: 2) }
+        follower = JSONLFollower { Self.logFiles() }
         follower.onSwitch = { [weak self] url, lines in
             guard let self else { return }
             let fresh = Date.now.timeIntervalSince(JSONLFollower.modificationDate(url)) < Self.recentWindow
@@ -31,6 +30,14 @@ final class CodexMonitor {
     }
 
     func poll() { follower.poll() }
+
+    /// The logs of the threads the user has open, when the app's own state can be read.
+    /// Otherwise today's and yesterday's folders — which also carry Codex's helper threads,
+    /// so their activity can be mistaken for the user's.
+    nonisolated static func logFiles() -> [URL] {
+        let paths = CodexStateReader.read()?.logPaths ?? []
+        return paths.isEmpty ? recentLogFiles(days: 2) : paths.map { URL(fileURLWithPath: $0) }
+    }
 
     /// Session logs from the last `days` day folders (`sessions/YYYY/MM/DD/*.jsonl`).
     nonisolated static func recentLogFiles(days: Int = 2) -> [URL] {

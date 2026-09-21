@@ -79,3 +79,30 @@ struct ShortTimeTests {
         #expect(ShortTime.ago(now.addingTimeInterval(-2 * 86_400), now: now) == "2일 전")
     }
 }
+
+struct CodexStateTests {
+    @Test func helperThreadsAreNotSessions() {
+        #expect(CodexStateReader.isUserThread(source: "vscode", threadSource: "user"))
+        #expect(!CodexStateReader.isUserThread(source: #"{"subagent":{"other":"guardian"}}"#,
+                                               threadSource: "guardian_review"))
+        // `codex exec` runs (including the notch's own usage refresh) are not open threads.
+        #expect(!CodexStateReader.isUserThread(source: "exec", threadSource: "user"))
+    }
+
+    @Test func aThreadIsNamedByItsNameThenItsSummary() {
+        func thread(name: String, title: String, cwd: String = "/Users/x/Documents/DEAN") -> CodexStateReader.Thread {
+            CodexStateReader.Thread(id: "1", name: name, title: title, cwd: cwd, source: "vscode",
+                                    threadSource: "user", updatedAt: .now, rolloutPath: "")
+        }
+        #expect(CodexStateReader.title(of: thread(name: "검고담임 광고영상 기획 수립", title: "무시됨"))
+                == "검고담임 광고영상 기획 수립")
+        #expect(CodexStateReader.title(of: thread(name: "", title: "2주차 PPT 정리")) == "2주차 PPT 정리")
+        // Some threads carry a whole prompt as their title; the folder is the better name.
+        #expect(CodexStateReader.title(of: thread(name: "", title: String(repeating: "가", count: 300))) == "DEAN")
+    }
+
+    @Test func theNewestNumberedDatabaseWins() {
+        #expect(CodexStateReader.version(of: "state_5.sqlite", prefix: "state") == 5)
+        #expect(CodexStateReader.version(of: "thread_history_1.sqlite", prefix: "thread_history") == 1)
+    }
+}
