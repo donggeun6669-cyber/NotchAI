@@ -52,21 +52,13 @@ private let macBookPro14 = NotchGeometry(screenFrame: CGRect(x: 0, y: 0, width: 
     #expect(geometry.notchRect == CGRect(x: 1280, y: 1415, width: 0, height: 25))
     #expect(geometry.collapsedSize.width == NotchGeometry.wingWidth * 2)
     #expect(geometry.notchHeight == NotchGeometry.islandHeight)
-    // It hangs below the menu bar instead of growing out of the top edge.
-    #expect(geometry.topInset == 25 + NotchGeometry.islandGap)
-    #expect(geometry.hitRect(expanded: false).maxY == 1440 - 25 - NotchGeometry.islandGap)
+    // Only the shape differs: it still hangs from the top edge, like the real notch.
+    #expect(geometry.hitRect(expanded: false).maxY == geometry.screenFrame.maxY)
+    #expect(geometry.windowFrame.maxY == geometry.screenFrame.maxY)
 }
 
-@Test func aNotchedScreenStartsAtTheTopEdge() {
-    #expect(macBookPro14.topInset == 0)
+@Test func everyScreenStartsAtTheTopEdge() {
     #expect(macBookPro14.hitRect(expanded: false).maxY == macBookPro14.screenFrame.maxY)
-}
-
-@Test func hiddenMenuBarStillLeavesRoomAboveTheIsland() {
-    let geometry = NotchGeometry(screenFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
-                                 safeAreaTop: 0, leftAuxiliaryWidth: nil, rightAuxiliaryWidth: nil,
-                                 menuBarHeight: 0)
-    #expect(geometry.topInset == NotchGeometry.fallbackMenuBarHeight + NotchGeometry.islandGap)
 }
 
 @MainActor
