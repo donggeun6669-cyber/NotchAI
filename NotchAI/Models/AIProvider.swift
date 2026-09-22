@@ -16,8 +16,8 @@ enum ProviderKind: String, CaseIterable, Identifiable {
 
     var nsAccent: NSColor {
         switch self {
-        case .claude: NSColor(srgbRed: 0.88, green: 0.48, blue: 0.29, alpha: 1)   // warm orange
-        case .gpt: NSColor(srgbRed: 0.16, green: 0.72, blue: 0.62, alpha: 1)      // green / teal
+        case .claude: NSColor(srgbRed: 0.88, green: 0.48, blue: 0.29, alpha: 1)   // Claude orange, kept intentionally
+        case .gpt: NSColor(srgbRed: 0.063, green: 0.639, blue: 0.498, alpha: 1)   // OpenAI green #10A37F
         }
     }
 

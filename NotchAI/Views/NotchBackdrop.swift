@@ -10,8 +10,9 @@ struct NotchBackdrop<S: Shape>: View {
     let solidHeight: CGFloat
     let isExpanded: Bool
 
-    /// How much of the desktop shows through at the very bottom.
-    private static var farOpacity: Double { 0.45 }
+    /// How much of the desktop shows through at the very bottom. The graphite stays substantial
+    /// enough for white text while the blur and wallpaper lighting still read through it.
+    private static var farOpacity: Double { 0.62 }
 
     var body: some View {
         GeometryReader { proxy in
@@ -26,8 +27,10 @@ struct NotchBackdrop<S: Shape>: View {
                 LinearGradient(stops: [
                     .init(color: .black, location: 0),
                     .init(color: .black, location: solid),
-                    .init(color: .black.opacity(isExpanded ? 0.86 : 1), location: solid + (1 - solid) * 0.35),
-                    .init(color: .black.opacity(isExpanded ? Self.farOpacity : 1), location: 1),
+                    .init(color: isExpanded ? NotchPalette.graphite.opacity(0.90) : .black,
+                          location: solid + (1 - solid) * 0.35),
+                    .init(color: isExpanded ? NotchPalette.graphite.opacity(Self.farOpacity) : .black,
+                          location: 1),
                 ], startPoint: .top, endPoint: .bottom)
 
                 // A soft sheen low down, where the surface has already thinned: glass catching
@@ -36,6 +39,13 @@ struct NotchBackdrop<S: Shape>: View {
                     RadialGradient(colors: [.white.opacity(0.06), .clear],
                                    center: UnitPoint(x: 0.22, y: 0.78), startRadius: 0,
                                    endRadius: height * 0.75)
+                        .blendMode(.plusLighter)
+
+                    // The wallpaper's red ribbon reflected very faintly in the lower-right
+                    // glass. It is deliberately weaker than any status colour.
+                    RadialGradient(colors: [NotchPalette.red.opacity(0.08), .clear],
+                                   center: UnitPoint(x: 0.82, y: 0.92), startRadius: 0,
+                                   endRadius: height * 0.68)
                         .blendMode(.plusLighter)
                 }
             }

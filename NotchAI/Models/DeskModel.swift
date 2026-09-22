@@ -1,7 +1,8 @@
 import Foundation
 import Observation
 
-/// The non-agent half of the notch: music, clipboard history, file shelf, schedule and timer.
+/// The non-agent half of the notch: music, clipboard history, file shelf, schedule, timer and
+/// the voice recorder.
 @MainActor
 @Observable
 final class DeskModel {
@@ -10,6 +11,7 @@ final class DeskModel {
     let shelf = ShelfService()
     let schedule = ScheduleService()
     let focus = FocusTimerService()
+    let recorder = RecorderService()
 
     var tab: DeskView.Tab = .music {
         didSet { UserDefaults.standard.set(tab.rawValue, forKey: "deskTab") }
@@ -34,6 +36,7 @@ final class DeskModel {
         clipboard.poll()
         schedule.poll()
         focus.poll()
+        recorder.poll()
     }
 
     /// A track that started in the last few seconds, for the collapsed notch peek.

@@ -25,6 +25,7 @@ targets:
         LSMinimumSystemVersion: "26.0"
         LSUIElement: true            # no Dock icon, no menu bar; lives in the notch only
         NSAppleEventsUsageDescription: "지금 재생 중인 음악과 크롬에서 보고 있는 페이지를 읽기 위해 사용합니다."
+        NSMicrophoneUsageDescription: "강의실 등 주변 소리를 녹음하기 위해 사용합니다."
         NSHumanReadableCopyright: ""
     settings:
       base:

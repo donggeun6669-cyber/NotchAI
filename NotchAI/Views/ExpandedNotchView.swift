@@ -17,20 +17,28 @@ struct ExpandedNotchView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                ForEach(app.providers, id: \.kind) { item in
-                    AgentCardView(provider: item)
+            if app.desk.tab == .record {
+                // Recording is a focused task, not another 84pt desk widget. Give it the panel and
+                // remove unrelated agent/activity cards while this tab is selected.
+                DeskView(desk: app.desk, accent: accent,
+                         onFocusChange: { notch.setKeepsOpen($0) })
+                    .frame(maxHeight: .infinity)
+            } else {
+                HStack(spacing: 10) {
+                    ForEach(app.providers, id: \.kind) { item in
+                        AgentCardView(provider: item)
+                    }
                 }
+
+                MainPaneView(app: app)
+                    .frame(maxHeight: .infinity)
+
+                Divider().overlay(.white.opacity(0.12))
+
+                DeskView(desk: app.desk, accent: accent,
+                         onFocusChange: { notch.setKeepsOpen($0) })
+                    .frame(height: 84)
             }
-
-            MainPaneView(app: app)
-                .frame(maxHeight: .infinity)
-
-            Divider().overlay(.white.opacity(0.12))
-
-            DeskView(desk: app.desk, accent: accent,
-                     onFocusChange: { notch.setKeepsOpen($0) })
-                .frame(height: 84)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)

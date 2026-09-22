@@ -11,6 +11,7 @@ struct DeskView: View {
         case clips = "Clips"
         case shelf = "Shelf"
         case focus = "타이머"
+        case record = "녹음"
 
         var id: String { rawValue }
         var symbol: String {
@@ -20,6 +21,7 @@ struct DeskView: View {
             case .clips: "doc.on.clipboard"
             case .shelf: "tray.full"
             case .focus: "timer"
+            case .record: "mic"
             }
         }
     }
@@ -42,6 +44,22 @@ struct DeskView: View {
                             Text(tab.rawValue)
                                 .font(.system(size: 10.5, weight: .medium, design: .rounded))
                                 .tracking(0.2)
+                            // A recording running behind another tab has to be visible, or an
+                            // hour goes by with nobody sure it is on.
+                            if tab == .record, desk.recorder.isRunning {
+                                // A silent input gets a ring, not just a dot: the difference has
+                                // to be visible from the tab row without opening the pane.
+                                Circle()
+                                    .fill(NotchPalette.red)
+                                    .frame(width: desk.recorder.silenceAlarm ? 7 : 5,
+                                           height: desk.recorder.silenceAlarm ? 7 : 5)
+                                    .overlay {
+                                        if desk.recorder.silenceAlarm {
+                                            Circle().stroke(NotchPalette.red.opacity(0.5), lineWidth: 2)
+                                                .frame(width: 12, height: 12)
+                                        }
+                                    }
+                            }
                         }
                         .foregroundStyle(desk.tab == tab ? .white.opacity(0.95) : .white.opacity(0.45))
                         .padding(.horizontal, 10)
@@ -62,6 +80,7 @@ struct DeskView: View {
                 case .clips: ClipsPane(clipboard: desk.clipboard)
                 case .shelf: ShelfPane(shelf: desk.shelf, accent: accent)
                 case .focus: FocusPane(focus: desk.focus, accent: accent, onFocusChange: onFocusChange)
+                case .record: RecordPane(recorder: desk.recorder, accent: accent)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -90,6 +109,14 @@ struct DeskView: View {
             .font(.system(size: 10))
             .foregroundStyle(.white.opacity(0.4))
             .help("오늘 집중한 시간을 한 줄로 복사합니다 (기록에 붙여넣기)")
+        case .record:
+            Button("폴더 열기") {
+                NSWorkspace.shared.open(RecorderService.folder)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 10))
+            .foregroundStyle(.white.opacity(0.4))
+            .help("녹음 파일이 저장되는 폴더를 엽니다")
         default:
             EmptyView()
         }
@@ -151,7 +178,7 @@ private struct MusicPane: View {
             HStack(spacing: 8) {
                 Text("음악을 읽으려면 자동화 권한이 필요합니다")
                     .font(.system(size: 11))
-                    .foregroundStyle(Color(nsColor: CharacterState.attentionYellow).opacity(0.9))
+                    .foregroundStyle(NotchPalette.red.opacity(0.9))
                 Button("설정 열기") { AppleScript.openAutomationSettings() }
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
@@ -299,7 +326,7 @@ private struct TodayPane: View {
                     if schedule.isStale {
                         Text("오래된 자료")
                             .font(.system(size: 9.5))
-                            .foregroundStyle(Color(nsColor: CharacterState.attentionYellow).opacity(0.8))
+                            .foregroundStyle(NotchPalette.red.opacity(0.9))
                             .help("calendar_sync.py를 다시 실행하면 최신으로 바뀝니다")
                     }
                 }
@@ -415,5 +442,294 @@ private struct FocusPane: View {
         focus.start(label: label)
         label = ""
         isEditing = false
+    }
+}
+
+/// A dedicated recording workspace. The three choices are situations a student recognises, not
+/// Core Audio vocabulary; each card says exactly what is captured and where the lecture is heard.
+private struct RecordPane: View {
+    let recorder: RecorderService
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("어디에서 녹음하나요?")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.95))
+                Text("상황을 고르면 듣는 장치와 녹음 입력을 함께 맞춥니다")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.42))
+            }
+
+            scenarioCards
+            selectedSetup
+            Spacer(minLength: 0)
+            controlAndStatus
+        }
+        .padding(.top, 4)
+        .onAppear {
+            recorder.reloadDevices()
+            recorder.reloadRecents()
+        }
+    }
+
+    private var scenarioCards: some View {
+        HStack(spacing: 8) {
+            ForEach(RecorderService.Mode.allCases) { mode in
+                let selected = recorder.mode == mode
+                Button {
+                    recorder.mode = mode
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Image(systemName: mode.symbol)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(selected ? accent : .white.opacity(0.45))
+                        Text(mode.label)
+                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(selected ? 0.96 : 0.68))
+                        Text(mode.explanation)
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.white.opacity(selected ? 0.55 : 0.32))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+                    .padding(10)
+                    .background {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(.white.opacity(selected ? 0.11 : 0.045))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(selected ? accent.opacity(0.75) : .white.opacity(0.07), lineWidth: 1)
+                            }
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(recorder.isBusy)
+                .opacity(recorder.isBusy && !selected ? 0.32 : 1)
+                .help(mode.explanation)
+            }
+        }
+    }
+
+    private var selectedSetup: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("사용 장치")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
+                if recorder.mode.usesMicrophone {
+                    microphonePicker
+                } else {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(recorder.readinessTrouble == nil ? Color.green.opacity(0.8) : accent)
+                        Text(recorder.sourceSummary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                }
+            }
+            Spacer(minLength: 0)
+            Text(recorder.mode == .classroom ? "주변 소리" : "맥 내부 소리")
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(.white.opacity(0.45))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(.white.opacity(0.07)))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 9).fill(.black.opacity(0.18)))
+    }
+
+    @ViewBuilder
+    private var controlAndStatus: some View {
+        if recorder.phase == .checkingInput {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("입력 확인 중 · \(max(1, 3 - Int(recorder.elapsed)))초")
+                        .font(.system(size: 11.5, weight: .semibold))
+                    Text(recorder.mode == .classroom ? "지금 한마디 말해 주세요" : "지금 강의를 재생해 주세요")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                LevelMeter(level: recorder.level)
+                Spacer(minLength: 0)
+                Button("취소") { recorder.stop() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+        } else if recorder.phase == .recording {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(NotchPalette.red)
+                        .frame(width: 8, height: 8)
+                    Text(RecorderService.clock(Int(recorder.elapsed)))
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .monospacedDigit()
+                    LevelMeter(level: recorder.level)
+                    Text(recorder.sourceSummary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.42))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Button("녹음 정지") { recorder.stop() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(accent.opacity(0.8)))
+                }
+                if recorder.silenceAlarm {
+                    warning(recorder.trouble?.message ?? "🔴 30초 동안 소리가 없습니다. 입력 장치를 확인해 주세요.")
+                } else {
+                    Text("입력 확인 완료 · 파일 길이도 매초 함께 감시합니다")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.green.opacity(0.72))
+                }
+            }
+        } else if recorder.phase == .finishing {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("파일을 닫고 처음부터 끝까지 검증하는 중…")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+        } else {
+            idleControls
+        }
+    }
+
+    /// Which microphone: the default, AirPods, an interface. Only shown when the mode uses one.
+    private var microphonePicker: some View {
+        Menu {
+            Button {
+                recorder.microphoneUID = nil
+            } label: {
+                Label("기본 입력 장치", systemImage: recorder.microphoneUID == nil ? "checkmark" : "")
+            }
+            Divider()
+            ForEach(recorder.microphones) { device in
+                Button {
+                    recorder.microphoneUID = device.uid
+                } label: {
+                    Label(device.name, systemImage: recorder.microphoneUID == device.uid ? "checkmark" : "")
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(recorder.chosenMicrophone?.name ?? "마이크 없음")
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .bold))
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .foregroundStyle(.white.opacity(0.7))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("어느 마이크로 받을지 고릅니다 (에어팟 포함)")
+    }
+
+    @ViewBuilder
+    private var idleControls: some View {
+        if let trouble = recorder.trouble ?? recorder.readinessTrouble {
+            HStack(alignment: .center, spacing: 10) {
+                warning(trouble.message)
+                Spacer(minLength: 0)
+                startButton
+            }
+        } else {
+            HStack(spacing: 10) {
+                startButton
+                Text(recorder.mode == .classroom
+                     ? "시작 후 3초 동안 말하면 실제 입력을 확인합니다"
+                     : "강의를 먼저 재생한 뒤 누르면 3초 동안 실제 소리를 확인합니다")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.42))
+                    .lineLimit(2)
+                Spacer(minLength: 6)
+                if let check = recorder.lastCheck {
+                    resultBadge(check)
+                } else if let recent = recorder.recents.first {
+                    Button(RecorderService.duration(recent.seconds) + " 최근 파일") {
+                        NSWorkspace.shared.activateFileViewerSelecting([recent.url])
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.42))
+                }
+            }
+        }
+    }
+
+    private var startButton: some View {
+        Button { recorder.start() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.circle.fill")
+                Text("3초 확인 후 녹음")
+            }
+            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(recorder.canStart ? 0.96 : 0.4))
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(accent.opacity(recorder.canStart ? 0.82 : 0.24)))
+        }
+        .buttonStyle(.plain)
+        .disabled(!recorder.canStart)
+    }
+
+    private func resultBadge(_ check: RecordingCheck) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(check.summary)
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(check.isClean ? .green.opacity(0.78) : accent)
+                .lineLimit(1)
+            Text("녹음 \(RecorderService.clock(check.expectedSeconds)) · 파일 \(RecorderService.clock(check.fileSeconds))")
+                .font(.system(size: 8.5))
+                .foregroundStyle(.white.opacity(0.32))
+                .monospacedDigit()
+        }
+    }
+
+    private func warning(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(NotchPalette.red.opacity(0.95))
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+}
+
+/// Eight bars that fill with the input level, so a dead input shows up immediately.
+private struct LevelMeter: View {
+    let level: Double
+    private static let bars = 8
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<Self.bars, id: \.self) { index in
+                let threshold = Double(index + 1) / Double(Self.bars)
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(level >= threshold ? NotchPalette.red.opacity(0.85) : Color.white.opacity(0.14))
+                    .frame(width: 3, height: 4 + CGFloat(index) * 1.4)
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: level)
+        .accessibilityLabel("입력 레벨")
     }
 }
