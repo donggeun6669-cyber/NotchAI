@@ -157,7 +157,10 @@ private struct MusicPane: View {
 
                 Spacer(minLength: 4)
 
-                if track.source.controllable || music.canUseMediaKeys {
+                if !music.trackIsCurrent {
+                    // macOS only controls its newest player, which is the row below.
+                    EmptyView()
+                } else if track.source.controllable || music.canUseMediaKeys {
                     HStack(spacing: 10) {
                         control("backward.fill") { music.previous() }
                         // A browser tab does not say whether it is paused, so show a toggle there.
@@ -174,6 +177,21 @@ private struct MusicPane: View {
                 }
             }
             .padding(.top, 2)
+            if let other = music.alsoPlaying {
+                HStack(spacing: 6) {
+                    Image(systemName: other.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .frame(width: 20)
+                    Text("함께 재생 · " + [other.title, other.label ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    control(other.isPlaying ? "pause.fill" : "play.fill") { music.playPause() }
+                }
+                .help("음악보다 나중에 소리를 낸 곳입니다. 재생 버튼은 이쪽을 조작합니다")
+            }
         } else if music.permissionDenied {
             HStack(spacing: 8) {
                 Text("음악을 읽으려면 자동화 권한이 필요합니다")

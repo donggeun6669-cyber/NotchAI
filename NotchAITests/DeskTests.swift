@@ -32,6 +32,47 @@ struct NowPlayingTests {
         #expect(NowPlayingService.browserTrack(fromTabList: list)?.title == "Playing song")
     }
 
+    // macOS reports only the newest player; a song in a Chrome tab must stay on top of a video.
+    typealias T = NowPlayingService.Track
+    typealias Tab = NowPlayingService.BrowserTab
+    static let song = T(title: "Hype Boy", artist: "NewJeans", source: .system, isPlaying: true, label: "Chrome")
+    static let video = T(title: "3주차 강의", artist: "", source: .system, isPlaying: true, label: "Chrome")
+    static let songTab = Tab(url: "https://music.youtube.com/watch?v=a", title: "Hype Boy - YouTube Music", playing: nil)
+    static let videoTab = Tab(url: "https://www.youtube.com/watch?v=b", title: "3주차 강의 - YouTube", playing: true)
+
+    @Test func songInAChromeTabIsRecognisedAsMusic() {
+        let a = NowPlayingService.arrange(system: Self.song, held: nil, musicTabs: [Self.songTab, Self.videoTab])
+        #expect(a.track?.title == "Hype Boy" && a.also == nil && a.isCurrent && a.held?.title == "Hype Boy")
+    }
+
+    @Test func videoStartedLaterGoesUnderTheSong() {
+        let a = NowPlayingService.arrange(system: Self.video, held: Self.song, musicTabs: [Self.songTab, Self.videoTab])
+        #expect(a.track?.title == "Hype Boy")
+        #expect(a.also?.title == "3주차 강의")
+        #expect(!a.isCurrent)   // the play button belongs to the video
+    }
+
+    @Test func songIsKeptUntilChromeHasBeenScanned() {
+        let a = NowPlayingService.arrange(system: Self.video, held: Self.song, musicTabs: nil)
+        #expect(a.track?.title == "Hype Boy" && a.also?.title == "3주차 강의")
+    }
+
+    @Test func nextSongInTheHeldTabReplacesTheTitle() {
+        let next = Tab(url: "https://music.youtube.com/watch?v=c", title: "Ditto - YouTube Music", playing: nil)
+        let a = NowPlayingService.arrange(system: Self.video, held: Self.song, musicTabs: [next, Self.videoTab])
+        #expect(a.track?.title == "Ditto" && a.also?.title == "3주차 강의")
+    }
+
+    @Test func closingTheSongTabDropsIt() {
+        let a = NowPlayingService.arrange(system: Self.video, held: Self.song, musicTabs: [Self.videoTab])
+        #expect(a.track?.title == "3주차 강의" && a.also == nil && a.isCurrent && a.held == nil)
+    }
+
+    @Test func plainYouTubeVideoIsNotMusic() {
+        let a = NowPlayingService.arrange(system: Self.video, held: nil, musicTabs: [Self.videoTab])
+        #expect(a.track?.title == "3주차 강의" && a.held == nil)
+    }
+
     @Test func idleMusicHomePageIsNotATrack() {
         #expect(NowPlayingService.browserTrack(fromTabList: "https://music.youtube.com/|||YouTube Music") == nil)
         #expect(NowPlayingService.parseBrowserTitle("Ditto • NewJeans", site: "open.spotify.com")?.artist == "NewJeans")

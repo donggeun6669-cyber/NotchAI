@@ -7,8 +7,10 @@ import Observation
 @MainActor
 @Observable
 final class ScheduleService {
+    /// The one copy inside DEAN (2026-09-22). The old copy in Widgy's group container stopped
+    /// being written that day and only goes stale.
     nonisolated static let dataURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Group Containers/group.woodsign.widgy/dean_schedule.json")
+        .appendingPathComponent("Documents/DEAN/06_RESOURCES/setup/schedule-sync/dean_schedule.json")
     /// The widget file is rebuilt by `calendar_sync.py`; older than this and it is probably stale.
     static let staleAfter: TimeInterval = 36 * 3600
 

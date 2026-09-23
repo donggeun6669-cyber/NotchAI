@@ -47,7 +47,13 @@ final class NowPlayingService {
         var controllable: Bool { self != .chrome }
     }
 
+    /// What the notch shows first. Music wins over anything else that plays at the same time.
     private(set) var track: Track?
+    /// The system's current item when music is shown above it (a video tab started after the song).
+    private(set) var alsoPlaying: Track?
+    /// False while `track` is music that another source pushed out of the system Now Playing.
+    /// The system only controls its current item, so the buttons then belong to `alsoPlaying`.
+    private(set) var trackIsCurrent = true
     /// Set when macOS refused the Apple Events permission, so the UI can explain it.
     private(set) var permissionDenied = false
     /// A new track just started; the collapsed notch shows it briefly.
@@ -57,6 +63,15 @@ final class NowPlayingService {
     private var lastRefresh = Date.distantPast
     private var missedReads = 0
     @ObservationIgnored private let mediaRemote = MediaRemoteService()
+
+    // macOS reports only the most recent player. To keep a song visible after a video starts in
+    // another tab, the last music item is held and checked against Chrome's open music tabs.
+    @ObservationIgnored private var systemTrack: Track?
+    @ObservationIgnored private var heldMusic: Track?
+    /// Music tabs from the last Chrome scan; nil until a scan has finished since the last change.
+    @ObservationIgnored private var musicTabs: [BrowserTab]?
+    @ObservationIgnored private var isScanning = false
+    @ObservationIgnored private var lastScan = Date.distantPast
 
     /// Prefer the system Now Playing; AppleScript polling is the fallback when it is unavailable.
     func start() {
@@ -70,13 +85,121 @@ final class NowPlayingService {
 
     private func show(_ found: Track?) {
         permissionDenied = false
+        systemTrack = found
+        if heldMusic != nil || found?.label == "Chrome" { musicTabs = nil }
+        recompute()
+        scanChrome()
+    }
+
+    private func setTrack(_ found: Track?) {
         guard found != track else { return }
         if found?.title != track?.title, found?.isPlaying == true { changedAt = .now }
         track = found
     }
 
+    private func recompute() {
+        // A held song from the Music or Spotify app goes away with the app.
+        if let label = heldMusic?.label, label == "Music" || label == "Spotify",
+           let source = Source(rawValue: label), !AppleScript.isRunning(bundleID: source.bundleID) {
+            heldMusic = nil
+        }
+        let result = Self.arrange(system: systemTrack, held: heldMusic, musicTabs: musicTabs)
+        heldMusic = result.held
+        setTrack(result.track)
+        if alsoPlaying != result.also { alsoPlaying = result.also }
+        if trackIsCurrent != result.isCurrent { trackIsCurrent = result.isCurrent }
+    }
+
+    /// Reads Chrome's music tabs so a held song can be kept (or dropped when its tab closes).
+    private func scanChrome() {
+        guard !isScanning, AppleScript.isRunning(bundleID: Source.chrome.bundleID) else {
+            if !AppleScript.isRunning(bundleID: Source.chrome.bundleID) { musicTabs = []; recompute() }
+            return
+        }
+        isScanning = true
+        lastScan = .now
+        Task {
+            let result = await AppleScript.run(Self.chromeMusicTabsScript)
+            isScanning = false
+            if let list = result.value { musicTabs = Self.browserTabs(fromTabList: list) }
+            else if musicTabs == nil { musicTabs = [] }
+            recompute()
+        }
+    }
+
+    struct BrowserTab: Equatable, Sendable {
+        var url: String
+        var title: String
+        var playing: Bool?
+    }
+
+    struct Arrangement: Equatable {
+        var track: Track?
+        var also: Track?
+        var isCurrent: Bool
+        var held: Track?
+    }
+
+    nonisolated static let musicApps: Set<String> = ["YouTube Music", "Spotify", "Music"]
+
+    /// The music tab a system item comes from, matched by title ("Song" ↔ "Song - YouTube Music").
+    nonisolated static func musicTab(for track: Track, in tabs: [BrowserTab]) -> (tab: BrowserTab, parsed: Track)? {
+        for site in songSites {
+            for tab in tabs where tab.url.contains(site) {
+                guard let parsed = parseBrowserTitle(tab.title, site: site) else { continue }
+                if parsed.title == track.title || parsed.title.hasPrefix(track.title)
+                    || track.title.hasPrefix(parsed.title) { return (tab, parsed) }
+            }
+        }
+        return nil
+    }
+
+    /// Any open song tab (the held song's tab now shows the next song).
+    nonisolated static func songTab(in tabs: [BrowserTab]) -> (tab: BrowserTab, parsed: Track)? {
+        for site in songSites {
+            for tab in tabs where tab.url.contains(site) {
+                if let parsed = parseBrowserTitle(tab.title, site: site) { return (tab, parsed) }
+            }
+        }
+        return nil
+    }
+
+    nonisolated static func isMusic(_ track: Track, tabs: [BrowserTab]?) -> Bool {
+        if let label = track.label, musicApps.contains(label) { return true }
+        guard track.label == "Chrome", let tabs else { return false }
+        return musicTab(for: track, in: tabs) != nil
+    }
+
+    /// Music first, then whatever else plays. `musicTabs == nil` means "not scanned yet":
+    /// the held song is kept until a scan says its tab is gone.
+    nonisolated static func arrange(system: Track?, held: Track?, musicTabs: [BrowserTab]?) -> Arrangement {
+        if let system, isMusic(system, tabs: musicTabs) {
+            return Arrangement(track: system, also: nil, isCurrent: true, held: system)
+        }
+        guard var music = held else {
+            return Arrangement(track: system, also: nil, isCurrent: true, held: nil)
+        }
+        if let tabs = musicTabs, music.label != "Spotify", music.label != "Music" {
+            // The tab title follows the song, so a changed title means the next song is on.
+            if let match = musicTab(for: music, in: tabs) {
+                if let playing = match.tab.playing { music.isPlaying = playing }
+            } else if let next = songTab(in: tabs) {
+                music = Track(title: next.parsed.title, artist: next.parsed.artist, source: .system,
+                              isPlaying: next.tab.playing ?? music.isPlaying, label: music.label)
+            } else {
+                return Arrangement(track: system, also: nil, isCurrent: true, held: nil)   // tab closed
+            }
+        }
+        let also = system.flatMap { $0.title == music.title ? nil : $0 }
+        return Arrangement(track: music, also: also, isCurrent: also == nil && system != nil, held: music)
+    }
+
     func poll(interval: TimeInterval = 3) {
-        guard !mediaRemote.isAvailable else { return }   // the stream pushes updates itself
+        if mediaRemote.isAvailable {
+            // The stream pushes the current item; only a held song needs its tab re-checked.
+            if heldMusic != nil, alsoPlaying != nil, Date.now.timeIntervalSince(lastScan) >= 5 { scanChrome() }
+            return
+        }
         guard !isRefreshing, Date.now.timeIntervalSince(lastRefresh) >= interval else { return }
         lastRefresh = .now
         isRefreshing = true
@@ -171,41 +294,56 @@ final class NowPlayingService {
             return (Track(title: parts[0], artist: parts[1], source: source,
                           isPlaying: parts[2].contains("playing")), false)
         case .chrome:
-            // Chrome's AppleScript has no "is playing" for tabs, so list the tabs of music sites
-            // (the YouTube Music app is a Chrome web app, so its window is listed here too).
-            // Two Apple Events per window (all URLs, all titles) instead of two per tab: with many
-            // tabs open, asking tab by tab took longer than the timeout and the track vanished.
-            // Chrome ends a window's name with "🔊" while its active tab plays sound, which tells
-            // playing from paused for the tab in front (third field: 1 / 0 / ? when not in front).
-            let script = """
-            tell application "Google Chrome"
-                set out to ""
-                repeat with w in windows
-                    set us to URL of every tab of w
-                    set ts to title of every tab of w
-                    set frontIndex to active tab index of w
-                    set speaking to (name of w) contains "🔊"
-                    repeat with i from 1 to count of us
-                        set u to item i of us
-                        if u contains "music.youtube.com" or u contains "youtube.com/watch" or u contains "open.spotify.com" or u contains "soundcloud.com" then
-                            set playState to "?"
-                            if i = frontIndex then
-                                if speaking then
-                                    set playState to "1"
-                                else
-                                    set playState to "0"
-                                end if
-                            end if
-                            set out to out & u & "|||" & (item i of ts) & "|||" & playState & linefeed
-                        end if
-                    end repeat
-                end repeat
-                return out
-            end tell
-            """
-            let result = await AppleScript.run(script)
+            let result = await AppleScript.run(chromeMusicTabsScript)
             guard let list = result.value else { return (nil, result == .notAuthorized) }
             return (Self.browserTrack(fromTabList: list), false)
+        }
+    }
+
+    /// Sites whose tabs are songs. Plain YouTube is left out: a lecture or video there is exactly
+    /// what should not push the song off the top.
+    nonisolated static let songSites = ["music.youtube.com", "open.spotify.com", "soundcloud.com"]
+
+    /// Chrome's AppleScript has no "is playing" for tabs, so list the tabs of music sites
+    /// (the YouTube Music app is a Chrome web app, so its window is listed here too).
+    /// Two Apple Events per window (all URLs, all titles) instead of two per tab: with many
+    /// tabs open, asking tab by tab took longer than the timeout and the track vanished.
+    /// Chrome ends a window's name with "🔊" while its active tab plays sound, which tells
+    /// playing from paused for the tab in front (third field: 1 / 0 / ? when not in front).
+    nonisolated static let chromeMusicTabsScript = """
+    tell application "Google Chrome"
+        set out to ""
+        repeat with w in windows
+            set us to URL of every tab of w
+            set ts to title of every tab of w
+            set frontIndex to active tab index of w
+            set speaking to (name of w) contains "🔊"
+            repeat with i from 1 to count of us
+                set u to item i of us
+                if u contains "music.youtube.com" or u contains "youtube.com/watch" or u contains "open.spotify.com" or u contains "soundcloud.com" then
+                    set playState to "?"
+                    if i = frontIndex then
+                        if speaking then
+                            set playState to "1"
+                        else
+                            set playState to "0"
+                        end if
+                    end if
+                    set out to out & u & "|||" & (item i of ts) & "|||" & playState & linefeed
+                end if
+            end repeat
+        end repeat
+        return out
+    end tell
+    """
+
+    /// "url|||title|||state" lines → tabs.
+    nonisolated static func browserTabs(fromTabList list: String) -> [BrowserTab] {
+        list.split(separator: "\n").compactMap { line in
+            let parts = line.components(separatedBy: "|||")
+            guard parts.count >= 2 else { return nil }
+            let playing: Bool? = parts.count >= 3 ? (parts[2] == "1" ? true : parts[2] == "0" ? false : nil) : nil
+            return BrowserTab(url: parts[0], title: parts[1].trimmingCharacters(in: .whitespaces), playing: playing)
         }
     }
 
