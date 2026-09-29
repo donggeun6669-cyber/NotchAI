@@ -2,8 +2,8 @@ import AVFoundation
 import Foundation
 import Observation
 
-/// Lecture recording in the three situations the user actually chooses: in a classroom, an online
-/// lecture through the Mac speakers, or an online lecture heard through AirPods.
+/// Lecture recording in the situations the user actually chooses: in a classroom, an online
+/// lecture through the Mac speakers or AirPods, or an online lecture recorded without playing aloud.
 ///
 /// Built after a 69-minute lecture was lost to a recorder that reported success the whole way
 /// through and saved pure silence (2026-09-22). So this one does not trust its own clock:
@@ -19,6 +19,7 @@ final class RecorderService: NSObject {
         case classroom
         case onlineSpeakers
         case onlineAirPods
+        case onlineMuted
 
         var id: String { rawValue }
 
@@ -27,6 +28,7 @@ final class RecorderService: NSObject {
             case .classroom: "강의실"
             case .onlineSpeakers: "온라인 · 스피커"
             case .onlineAirPods: "온라인 · 에어팟"
+            case .onlineMuted: "온라인 · 무음"
             }
         }
 
@@ -35,6 +37,7 @@ final class RecorderService: NSObject {
             case .classroom: "person.wave.2.fill"
             case .onlineSpeakers: "macbook.and.iphone"
             case .onlineAirPods: "airpodspro"
+            case .onlineMuted: "speaker.slash.fill"
             }
         }
 
@@ -43,11 +46,15 @@ final class RecorderService: NSObject {
             case .classroom: "맥북 마이크로 교실 소리를 담습니다"
             case .onlineSpeakers: "맥 소리를 녹음하며 내장 스피커로 듣습니다"
             case .onlineAirPods: "맥 소리를 녹음하며 AirPods로 듣습니다"
+            case .onlineMuted: "소리를 내지 않고 맥 소리만 녹음합니다"
             }
         }
 
         var usesMicrophone: Bool { self == .classroom }
         var usesLoopback: Bool { self != .classroom }
+        /// Whether the user hears the lecture while it records. The muted preset sends the Mac's
+        /// sound to the loopback driver alone, so nothing plays in the room.
+        var playsAloud: Bool { self == .onlineSpeakers || self == .onlineAirPods }
     }
 
     enum Phase: Equatable {
@@ -116,6 +123,8 @@ final class RecorderService: NSObject {
 
     private static let modeKey = "recorderMode"
     private static let micKey = "recorderMicUID"
+    /// Where the sound goes back to if the app dies while the muted preset holds the output.
+    private static let restoreOutputKey = "recorderRestoreOutputUID"
 
     private(set) var phase: Phase = .idle
     private(set) var startedAt: Date?
@@ -152,7 +161,7 @@ final class RecorderService: NSObject {
     var isRunning: Bool { phase == .checkingInput || phase == .recording }
     var isBusy: Bool { phase != .idle }
     var isLoopbackMissing: Bool { mode.usesLoopback && AudioDevices.loopback() == nil }
-    var isListeningDeviceMissing: Bool { mode.usesLoopback && listeningDevice == nil }
+    var isListeningDeviceMissing: Bool { mode.playsAloud && listeningDevice == nil }
     var readinessTrouble: Trouble? {
         if mode.usesMicrophone && chosenMicrophone == nil { return .noMicrophone }
         if isLoopbackMissing { return .noLoopback }
@@ -189,6 +198,7 @@ final class RecorderService: NSObject {
         microphoneUID = UserDefaults.standard.string(forKey: Self.micKey)
         // A crash could have left devices behind, and the Mac listening through one of them.
         AudioDevices.removeStaleAggregates()
+        restoreOutputAfterCrash()
         reloadDevices()
         reloadRecents()
     }
@@ -220,12 +230,14 @@ final class RecorderService: NSObject {
             "맥 소리 → \(listeningDevice?.name ?? "내장 스피커 없음")"
         case .onlineAirPods:
             "맥 소리 → \(listeningDevice?.name ?? "AirPods 없음")"
+        case .onlineMuted:
+            "맥 소리 → 녹음만 · 스피커 꺼짐"
         }
     }
 
     var listeningDevice: AudioDevices.Device? {
         switch mode {
-        case .classroom: nil
+        case .classroom, .onlineMuted: nil
         case .onlineSpeakers: AudioDevices.builtInOutput()
         case .onlineAirPods: AudioDevices.airPodsOutput()
         }
@@ -277,6 +289,11 @@ final class RecorderService: NSObject {
 
     func poll() {
         guard let startedAt, isRunning else { return }
+        // In the muted preset the output *is* the loopback driver, so the mute key would silence
+        // the recording itself. Undo it at once; the 30-second alarm would be far too late.
+        if mode == .onlineMuted, let loopback = AudioDevices.loopback() {
+            AudioDevices.keepAudible(loopback)
+        }
         if let channel = output.connection(with: .audio)?.audioChannels.first {
             level = Self.level(fromDecibels: Double(channel.averagePowerLevel))
             if phase == .checkingInput { startupPeakLevel = max(startupPeakLevel, level) }
@@ -392,6 +409,7 @@ final class RecorderService: NSObject {
             trouble = .noLoopback
             return false
         }
+        if mode == .onlineMuted { return routeOutputToLoopbackOnly(loopback) }
         guard let listen = listeningDevice else {
             trouble = mode == .onlineAirPods ? .noAirPods : .noSpeakers
             return false
@@ -412,6 +430,38 @@ final class RecorderService: NSObject {
         return true
     }
 
+    /// The muted preset: the Mac plays into BlackHole and nothing else, so the room stays silent
+    /// and the file still gets every sample. The previous output is also written to disk, because
+    /// a crash here would otherwise leave the Mac with no audible sound at all.
+    private func routeOutputToLoopbackOnly(_ loopback: AudioDevices.Device) -> Bool {
+        guard let current = AudioDevices.defaultOutput() else {
+            trouble = .routingFailed
+            return false
+        }
+        AudioDevices.keepAudible(loopback)
+        guard AudioDevices.setDefaultOutput(loopback) else {
+            trouble = .routingFailed
+            return false
+        }
+        if current.uid != loopback.uid {
+            previousOutput = current
+            UserDefaults.standard.set(current.uid, forKey: Self.restoreOutputKey)
+        }
+        return true
+    }
+
+    /// Puts the sound back on the speakers when the last run died mid-recording in the muted preset.
+    private func restoreOutputAfterCrash() {
+        guard let uid = UserDefaults.standard.string(forKey: Self.restoreOutputKey) else { return }
+        UserDefaults.standard.removeObject(forKey: Self.restoreOutputKey)
+        guard let current = AudioDevices.defaultOutput(),
+              current.name.localizedCaseInsensitiveContains(AudioDevices.loopbackNeedle) else { return }
+        if let previous = AudioDevices.outputs().first(where: { $0.uid == uid })
+            ?? AudioDevices.builtInOutput() {
+            AudioDevices.setDefaultOutput(previous)
+        }
+    }
+
     /// Picks (or builds) the capture device this mode needs.
     private func resolveDevice() -> AVCaptureDevice? {
         switch mode {
@@ -421,7 +471,7 @@ final class RecorderService: NSObject {
                 return nil
             }
             return device
-        case .onlineSpeakers, .onlineAirPods:
+        case .onlineSpeakers, .onlineAirPods, .onlineMuted:
             guard let loopback = AudioDevices.loopback(),
                   let device = AVCaptureDevice(uniqueID: loopback.uid) else {
                 trouble = .noLoopback
@@ -441,6 +491,7 @@ final class RecorderService: NSObject {
         if let previous = previousOutput {
             AudioDevices.setDefaultOutput(previous)
             previousOutput = nil
+            UserDefaults.standard.removeObject(forKey: Self.restoreOutputKey)
         }
         if let multi = multiOutput {
             AudioDevices.destroyAggregate(multi)
@@ -619,6 +670,7 @@ final class RecorderService: NSObject {
         case .classroom: "_강의실"
         case .onlineSpeakers: "_온라인_스피커"
         case .onlineAirPods: "_온라인_에어팟"
+        case .onlineMuted: "_온라인_무음"
         }
         return "\(f.string(from: date))_녹음\(suffix).m4a"
     }

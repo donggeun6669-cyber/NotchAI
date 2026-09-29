@@ -70,6 +70,42 @@ enum AudioDevices {
                                           UInt32(MemoryLayout<AudioDeviceID>.size), &id) == noErr
     }
 
+    /// Makes sure `device` is not muted and is at full volume. Returns true when it had to change
+    /// something. Used on the loopback driver while it is the Mac's only output: its volume and
+    /// mute feed straight into the recording, so the mute key would record silence.
+    @discardableResult
+    static func keepAudible(_ device: Device) -> Bool {
+        var changed = false
+        var muteAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyMute,
+            mScope: kAudioObjectPropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain)
+        var muted = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        if AudioObjectHasProperty(device.id, &muteAddress),
+           AudioObjectGetPropertyData(device.id, &muteAddress, 0, nil, &size, &muted) == noErr,
+           muted != 0 {
+            var off = UInt32(0)
+            changed = AudioObjectSetPropertyData(device.id, &muteAddress, 0, nil,
+                                                 UInt32(MemoryLayout<UInt32>.size), &off) == noErr
+        }
+        var volumeAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioObjectPropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain)
+        var volume = Float32(1)
+        size = UInt32(MemoryLayout<Float32>.size)
+        if AudioObjectHasProperty(device.id, &volumeAddress),
+           AudioObjectGetPropertyData(device.id, &volumeAddress, 0, nil, &size, &volume) == noErr,
+           volume < 0.999 {
+            var full = Float32(1)
+            changed = AudioObjectSetPropertyData(device.id, &volumeAddress, 0, nil,
+                                                 UInt32(MemoryLayout<Float32>.size), &full) == noErr
+                || changed
+        }
+        return changed
+    }
+
     /// A *stacked* aggregate: sound sent here plays on `listen` AND lands in the loopback driver,
     /// so the Mac can be recorded while the user still hears it. This is what
     /// `record-lecture.sh` builds, and without it "맥 소리" records pure silence.

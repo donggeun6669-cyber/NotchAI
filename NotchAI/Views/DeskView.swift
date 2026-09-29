@@ -574,7 +574,9 @@ private struct RecordPane: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("입력 확인 중 · \(max(1, 3 - Int(recorder.elapsed)))초")
                         .font(.system(size: 11.5, weight: .semibold))
-                    Text(recorder.mode == .classroom ? "지금 한마디 말해 주세요" : "지금 강의를 재생해 주세요")
+                    Text(recorder.mode == .classroom ? "지금 한마디 말해 주세요"
+                         : recorder.mode == .onlineMuted ? "지금 강의를 재생해 주세요 · 소리는 나지 않습니다"
+                         : "지금 강의를 재생해 주세요")
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.45))
                 }
@@ -612,7 +614,9 @@ private struct RecordPane: View {
                 if recorder.silenceAlarm {
                     warning(recorder.trouble?.message ?? "🔴 30초 동안 소리가 없습니다. 입력 장치를 확인해 주세요.")
                 } else {
-                    Text("입력 확인 완료 · 파일 길이도 매초 함께 감시합니다")
+                    Text(recorder.mode == .onlineMuted
+                         ? "입력 확인 완료 · 음소거 키를 눌러도 녹음은 계속됩니다"
+                         : "입력 확인 완료 · 파일 길이도 매초 함께 감시합니다")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.green.opacity(0.72))
                 }
@@ -675,6 +679,8 @@ private struct RecordPane: View {
                 startButton
                 Text(recorder.mode == .classroom
                      ? "시작 후 3초 동안 말하면 실제 입력을 확인합니다"
+                     : recorder.mode == .onlineMuted
+                     ? "맥을 음소거한 채 강의를 재생하고 누르세요 · 소리는 파일에만 담깁니다"
                      : "강의를 먼저 재생한 뒤 누르면 3초 동안 실제 소리를 확인합니다")
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.42))

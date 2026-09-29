@@ -34,6 +34,8 @@ struct RecorderTests {
                 == "2026-09-22_1904_녹음_온라인_스피커.m4a")
         #expect(RecorderService.filename(at: date, mode: .onlineAirPods, calendar: calendar)
                 == "2026-09-22_1904_녹음_온라인_에어팟.m4a")
+        #expect(RecorderService.filename(at: date, mode: .onlineMuted, calendar: calendar)
+                == "2026-09-22_1904_녹음_온라인_무음.m4a")
     }
 
     @Test func midnightAndNoonDoNotCollapseIntoTheSameName() {
@@ -134,6 +136,12 @@ struct RecorderTests {
         #expect(RecorderService.Mode.onlineSpeakers.usesLoopback)
         #expect(!RecorderService.Mode.onlineAirPods.usesMicrophone)
         #expect(RecorderService.Mode.onlineAirPods.usesLoopback)
+        // Muted: Mac sound only, and nothing played in the room — so no mic and no speakers needed.
+        #expect(!RecorderService.Mode.onlineMuted.usesMicrophone)
+        #expect(RecorderService.Mode.onlineMuted.usesLoopback)
+        #expect(!RecorderService.Mode.onlineMuted.playsAloud)
+        #expect(RecorderService.Mode.onlineSpeakers.playsAloud)
+        #expect(RecorderService.Mode.onlineAirPods.playsAloud)
     }
 
     @Test func everyModeHasALabelAndAnExplanation() {
@@ -164,6 +172,16 @@ struct RecorderTests {
         let installed = AudioDevices.loopback() != nil
         recorder.mode = .onlineSpeakers
         #expect(recorder.isLoopbackMissing == !installed)
+    }
+
+    @MainActor
+    @Test func theMutedPresetNeverWaitsForSpeakersOrAirPods() {
+        let recorder = RecorderService(folder: FileManager.default.temporaryDirectory
+            .appendingPathComponent("RecorderTests-\(UUID().uuidString)"))
+        recorder.mode = .onlineMuted
+        #expect(recorder.listeningDevice == nil)
+        #expect(recorder.isListeningDeviceMissing == false)
+        #expect(recorder.readinessTrouble == (AudioDevices.loopback() == nil ? .noLoopback : nil))
     }
 
     @Test func recoveryFilesAreClearlyMarkedAndNeverOverwrite() throws {
