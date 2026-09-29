@@ -66,6 +66,7 @@ targets:
       - NotchAI/Services/RecorderService.swift
       - NotchAI/Services/AudioDevices.swift
       - NotchAI/Services/RecordingCheck.swift
+      - NotchAI/Services/Transcriber.swift
     info:
       path: LectureRecorder/Resources/Info.plist
       properties:
@@ -83,6 +84,22 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "15.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO   # the whisper script copies from build/ into the bundle
+    postBuildScripts:
+      # On-device transcription: whisper-cli from scripts/build-whisper.sh, plus its MIT licence.
+      - name: Bundle whisper-cli
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          BIN="$SRCROOT/build/whisper/whisper-cli"
+          if [ ! -x "$BIN" ]; then
+            echo "warning: whisper-cli not built; run scripts/build-whisper.sh (transcription disabled)"
+            exit 0
+          fi
+          DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          cp "$BIN" "$DEST/whisper-cli"
+          cp "$SRCROOT/build/whisper/whisper-LICENSE" "$DEST/whisper-LICENSE.txt"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$DEST/whisper-cli"
   NotchAITests:
     type: bundle.unit-test
     platform: macOS

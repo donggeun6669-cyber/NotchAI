@@ -5,7 +5,10 @@ import SwiftUI
 /// Same flow and wording as NotchAI's 녹음 tab, laid out for a small popover.
 struct RecorderPanel: View {
     let recorder: RecorderService
-    private let red = Color(red: 0.851, green: 0.176, blue: 0.212)
+    let transcriber: Transcriber
+    /// Set when 「전사」 is pressed before the model is on this Mac.
+    @State private var askingForModel = false
+    let red = Color(red: 0.851, green: 0.176, blue: 0.212)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -213,7 +216,7 @@ struct RecorderPanel: View {
         }
     }
 
-    private func warning(_ text: String) -> some View {
+    func warning(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(red)
@@ -232,22 +235,29 @@ struct RecorderPanel: View {
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                 ForEach(recorder.recents.prefix(3)) { take in
-                    Button {
-                        NSWorkspace.shared.activateFileViewerSelecting([take.url])
-                    } label: {
-                        HStack {
-                            Text(take.url.deletingPathExtension().lastPathComponent)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: 6)
-                            Text(RecorderService.duration(take.seconds))
-                                .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([take.url])
+                        } label: {
+                            HStack {
+                                Text(take.url.deletingPathExtension().lastPathComponent)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 6)
+                                Text(RecorderService.duration(take.seconds))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.system(size: 11))
                         }
-                        .font(.system(size: 11))
+                        .buttonStyle(.plain)
+                        transcriptControl(for: take.url)
                     }
-                    .buttonStyle(.plain)
+                    if case .failed(let why)? = transcriber.job(for: take.url) {
+                        warning(why)
+                    }
                 }
             }
+            modelCard
             HStack {
                 Button("녹음 폴더 열기") {
                     try? FileManager.default.createDirectory(at: RecorderService.folder,
@@ -267,6 +277,133 @@ struct RecorderPanel: View {
             }
             .font(.system(size: 11))
         }
+    }
+}
+
+extension RecorderPanel {
+    // MARK: - Transcription
+
+    /// The small control at the end of each recent recording: 전사 → progress → 자막.
+    @ViewBuilder
+    func transcriptControl(for url: URL) -> some View {
+        switch transcriber.job(for: url) {
+        case .preparing?:
+            HStack(spacing: 4) {
+                ProgressView().controlSize(.mini)
+                Text("준비").font(.system(size: 10.5)).foregroundStyle(.secondary)
+            }
+        case .transcribing(let percent)?:
+            HStack(spacing: 4) {
+                ProgressView(value: Double(percent), total: 100)
+                    .frame(width: 44)
+                Text("\(percent)%")
+                    .font(.system(size: 10.5))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Button {
+                    transcriber.cancel(url)
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("전사 취소")
+            }
+        default:
+            if transcriber.hasTranscript(url) {
+                Button("자막") {
+                    NSWorkspace.shared.open(Transcriber.transcriptURL(for: url))
+                }
+                .font(.system(size: 10.5))
+                .help("받아 적은 글(.txt)을 엽니다. 시간이 붙은 자막(.srt)도 같은 폴더에 있습니다")
+            } else {
+                Button("전사") {
+                    if transcriber.modelState == .ready {
+                        transcriber.transcribe(url)
+                    } else {
+                        askingForModel = true
+                    }
+                }
+                .font(.system(size: 10.5))
+                .disabled(!transcriber.isAvailable || transcriber.isBusy || recorder.isBusy)
+                .help(recorder.isBusy ? "녹음이 끝난 뒤 전사할 수 있습니다"
+                      : "이 맥 안에서 무료로 받아 적습니다 (인터넷으로 보내지 않음)")
+            }
+        }
+    }
+
+    /// Download and verification of the one-time 1.6GB model, shown only when it matters.
+    @ViewBuilder
+    var modelCard: some View {
+        switch transcriber.modelState {
+        case .ready:
+            EmptyView()
+        case .downloading(let received):
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("전사 모델 받는 중 · \(Self.megabytes(received)) / \(Self.megabytes(Transcriber.modelBytes))")
+                    Spacer()
+                    Button("취소") { transcriber.cancelDownload() }
+                }
+                ProgressView(value: Double(received), total: Double(Transcriber.modelBytes))
+            }
+            .font(.system(size: 10.5))
+            .modifier(CardStyle())
+        case .verifying:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("받은 모델이 온전한지 확인하는 중…")
+            }
+            .font(.system(size: 10.5))
+            .modifier(CardStyle())
+        case .failed(let why):
+            VStack(alignment: .leading, spacing: 6) {
+                warning(why)
+                Button("다시 받기") { transcriber.downloadModel() }
+            }
+            .font(.system(size: 10.5))
+            .modifier(CardStyle())
+        case .missing:
+            if askingForModel {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("전사하려면 음성 인식 모델을 처음 한 번 내려받아야 합니다.")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("무료 · 1.6GB · 와이파이에서 받아 주세요. 받은 뒤에는 인터넷 없이 이 맥 안에서만 받아 적습니다.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    #if arch(x86_64)
+                    Text("Intel 맥에서는 전사가 오래 걸립니다 (강의 길이보다 길 수 있음).")
+                        .foregroundStyle(red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    #endif
+                    HStack {
+                        Button("내려받기") {
+                            askingForModel = false
+                            transcriber.downloadModel()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(red)
+                        Button("나중에") { askingForModel = false }
+                    }
+                }
+                .font(.system(size: 10.5))
+                .modifier(CardStyle())
+            }
+        }
+    }
+
+    static func megabytes(_ bytes: Int64) -> String {
+        bytes >= 1_000_000_000
+            ? String(format: "%.1fGB", Double(bytes) / 1_000_000_000)
+            : "\(bytes / 1_000_000)MB"
+    }
+}
+
+private struct CardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
     }
 }
 

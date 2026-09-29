@@ -11,7 +11,7 @@ struct LectureRecorderApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            RecorderPanel(recorder: model.recorder)
+            RecorderPanel(recorder: model.recorder, transcriber: model.transcriber)
         } label: {
             MenuBarLabel(recorder: model.recorder)
         }
@@ -24,6 +24,7 @@ struct LectureRecorderApp: App {
 @Observable
 final class RecorderModel {
     let recorder = RecorderService()
+    let transcriber = Transcriber()
     @ObservationIgnored private var timer: Timer?
     /// `--preview` shows the panel in an ordinary window, for screenshots.
     @ObservationIgnored private var previewWindow: NSWindow?
@@ -36,7 +37,7 @@ final class RecorderModel {
             // After launch: building a hosting window while SwiftUI is still creating the scene
             // aborts inside the view graph.
             DispatchQueue.main.async { [self] in
-                let window = NSWindow(contentViewController: NSHostingController(rootView: RecorderPanel(recorder: recorder)))
+                let window = NSWindow(contentViewController: NSHostingController(rootView: RecorderPanel(recorder: recorder, transcriber: transcriber)))
                 window.title = "강의녹음"
                 window.center()
                 window.makeKeyAndOrderFront(nil)
