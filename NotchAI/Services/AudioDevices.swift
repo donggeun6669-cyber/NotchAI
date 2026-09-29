@@ -106,6 +106,58 @@ enum AudioDevices {
         return changed
     }
 
+    /// A subscription to a device's mute and volume, made by `watchAudibility`. Keep it alive for
+    /// as long as the watch should run, then pass it to `stopWatching`.
+    final class AudibilityWatch: @unchecked Sendable {
+        fileprivate let device: AudioDeviceID
+        fileprivate let onChange: @Sendable () -> Void
+        fileprivate init(device: AudioDeviceID, onChange: @escaping @Sendable () -> Void) {
+            self.device = device
+            self.onChange = onChange
+        }
+    }
+
+    private static let audibilitySelectors = [kAudioDevicePropertyMute, kAudioDevicePropertyVolumeScalar]
+
+    /// A C callback with the watch as its context, not a Swift closure: a closure passed as a
+    /// listener *block* is re-bridged on every call, so removing it silently fails and the
+    /// listener keeps firing after the recording (found 2026-09-29).
+    private static let audibilityProc: AudioObjectPropertyListenerProc = { _, _, _, context in
+        guard let context else { return noErr }
+        let watch = Unmanaged<AudibilityWatch>.fromOpaque(context).takeUnretainedValue()
+        DispatchQueue.main.async { watch.onChange() }
+        return noErr
+    }
+
+    /// Calls `onChange` on the main queue the moment `device`'s output mute or volume changes, so
+    /// a press of the mute key can be undone before any audio is lost — polling once a second
+    /// would drop up to a second of the lecture.
+    static func watchAudibility(of device: Device, onChange: @escaping @Sendable () -> Void) -> AudibilityWatch {
+        let watch = AudibilityWatch(device: device.id, onChange: onChange)
+        let context = Unmanaged.passUnretained(watch).toOpaque()
+        for selector in audibilitySelectors {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain)
+            if AudioObjectHasProperty(device.id, &address) {
+                AudioObjectAddPropertyListener(device.id, &address, audibilityProc, context)
+            }
+        }
+        return watch
+    }
+
+    static func stopWatching(_ watch: AudibilityWatch) {
+        let context = Unmanaged.passUnretained(watch).toOpaque()
+        for selector in audibilitySelectors {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain)
+            AudioObjectRemovePropertyListener(watch.device, &address, audibilityProc, context)
+        }
+    }
+
     /// A *stacked* aggregate: sound sent here plays on `listen` AND lands in the loopback driver,
     /// so the Mac can be recorded while the user still hears it. This is what
     /// `record-lecture.sh` builds, and without it "맥 소리" records pure silence.

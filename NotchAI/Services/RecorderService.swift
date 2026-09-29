@@ -177,6 +177,8 @@ final class RecorderService: NSObject {
     /// Set while playback is routed through the loopback driver; restored on stop.
     private var multiOutput: AudioDevices.Device?
     private var previousOutput: AudioDevices.Device?
+    /// Muted preset only: undoes a mute-key press on the loopback the instant it happens.
+    private var audibilityWatch: AudioDevices.AudibilityWatch?
     /// Recoverable QuickTime fragments are written here while recording.
     private var pendingURL: URL?
     /// The user-facing m4a destination, created only after the capture has closed.
@@ -289,8 +291,8 @@ final class RecorderService: NSObject {
 
     func poll() {
         guard let startedAt, isRunning else { return }
-        // In the muted preset the output *is* the loopback driver, so the mute key would silence
-        // the recording itself. Undo it at once; the 30-second alarm would be far too late.
+        // Backstop for the listener installed in `routeOutputToLoopbackOnly`: in the muted preset
+        // the output *is* the loopback driver, so the mute key would silence the recording itself.
         if mode == .onlineMuted, let loopback = AudioDevices.loopback() {
             AudioDevices.keepAudible(loopback)
         }
@@ -447,6 +449,9 @@ final class RecorderService: NSObject {
             previousOutput = current
             UserDefaults.standard.set(current.uid, forKey: Self.restoreOutputKey)
         }
+        audibilityWatch = AudioDevices.watchAudibility(of: loopback) {
+            AudioDevices.keepAudible(loopback)
+        }
         return true
     }
 
@@ -488,6 +493,10 @@ final class RecorderService: NSObject {
         for input in session.inputs { session.removeInput(input) }
         session.commitConfiguration()
 
+        if let watch = audibilityWatch {
+            AudioDevices.stopWatching(watch)
+            audibilityWatch = nil
+        }
         if let previous = previousOutput {
             AudioDevices.setDefaultOutput(previous)
             previousOutput = nil
