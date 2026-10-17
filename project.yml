@@ -66,6 +66,7 @@ targets:
       - NotchAI/Services/RecorderService.swift
       - NotchAI/Services/AudioDevices.swift
       - NotchAI/Services/RecordingCheck.swift
+      - NotchAI/Services/SystemAudioCapture.swift
       - NotchAI/Services/Transcriber.swift
     info:
       path: LectureRecorder/Resources/Info.plist
@@ -76,7 +77,8 @@ targets:
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "15.0"
         LSUIElement: true            # menu bar only
-        NSMicrophoneUsageDescription: "강의를 녹음하기 위해 마이크와 녹음 장치(BlackHole)를 사용합니다."
+        NSMicrophoneUsageDescription: "강의실에서 교수님 목소리를 녹음하기 위해 마이크를 사용합니다."
+        NSAudioCaptureUsageDescription: "온라인 강의를 녹음하기 위해 맥에서 재생되는 소리를 사용합니다. 녹음은 이 맥에만 저장됩니다."
         NSHumanReadableCopyright: ""
     settings:
       base:
@@ -86,7 +88,8 @@ targets:
         ENABLE_HARDENED_RUNTIME: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO   # the whisper script copies from build/ into the bundle
     postBuildScripts:
-      # On-device transcription: whisper-cli from scripts/build-whisper.sh, plus its MIT licence.
+      # On-device transcription: whisper-cli and its 5-bit model from scripts/build-whisper.sh,
+      # plus the MIT licence. The model ships in the app so a friend downloads nothing.
       - name: Bundle whisper-cli
         basedOnDependencyAnalysis: false
         script: |
@@ -99,6 +102,12 @@ targets:
           DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
           cp "$BIN" "$DEST/whisper-cli"
           cp "$SRCROOT/build/whisper/whisper-LICENSE" "$DEST/whisper-LICENSE.txt"
+          MODEL="$SRCROOT/build/whisper/models/ggml-large-v3-turbo-q5_0.bin"
+          if [ -f "$MODEL" ]; then
+            cp "$MODEL" "$DEST/"
+          else
+            echo "warning: bundled model missing; run scripts/build-whisper.sh (the app will offer the download)"
+          fi
           codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" "$DEST/whisper-cli"
   NotchAITests:
     type: bundle.unit-test

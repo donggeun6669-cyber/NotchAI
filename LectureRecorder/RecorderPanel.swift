@@ -264,12 +264,6 @@ struct RecorderPanel: View {
                                                              withIntermediateDirectories: true)
                     NSWorkspace.shared.open(RecorderService.folder)
                 }
-                if recorder.isLoopbackMissing || AudioDevices.loopback() == nil {
-                    Button("BlackHole 받기") {
-                        NSWorkspace.shared.open(URL(string: "https://existential.audio/blackhole/")!)
-                    }
-                    .help("온라인 강의(맥 소리) 녹음에 필요합니다. 설치 후 재부팅")
-                }
                 Spacer()
                 Button("종료") { NSApp.terminate(nil) }
                     .disabled(recorder.isBusy)

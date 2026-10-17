@@ -4,7 +4,8 @@ import SwiftUI
 
 /// "강의녹음": the lecture recorder from NotchAI on its own, for Macs without a notch or without
 /// the rest of NotchAI. It lives in the menu bar and shares RecorderService, AudioDevices and
-/// RecordingCheck with NotchAI, so a fix to recording lands in both apps.
+/// RecordingCheck with NotchAI, so a fix to recording lands in both apps. Unlike NotchAI it records
+/// the Mac's sound through the built-in tap, so a friend installs nothing besides this app.
 @main
 struct LectureRecorderApp: App {
     @State private var model = RecorderModel()
@@ -23,7 +24,7 @@ struct LectureRecorderApp: App {
 @MainActor
 @Observable
 final class RecorderModel {
-    let recorder = RecorderService()
+    let recorder = RecorderService(macSound: .systemTap)
     let transcriber = Transcriber()
     @ObservationIgnored private var timer: Timer?
     /// `--preview` shows the panel in an ordinary window, for screenshots.

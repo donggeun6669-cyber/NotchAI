@@ -36,6 +36,24 @@ struct TranscriberTests {
         #expect(gains[30] > 5)                             // quiet speech is lifted
     }
 
+    @MainActor
+    @Test func aBundledModelIsReadyWithoutADownload() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriberTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let bundled = folder.appendingPathComponent("\(Transcriber.bundledModelName).bin")
+
+        // Nothing shipped and nothing downloaded: the download is offered.
+        let without = Transcriber(folder: folder, bundledModel: bundled)
+        #expect(without.modelState == .missing)
+
+        try Data("model".utf8).write(to: bundled)
+        let with = Transcriber(folder: folder, bundledModel: bundled)
+        #expect(with.modelState == .ready)
+        #expect(with.modelURL == bundled)
+    }
+
     @Test func aWrongFileNeverPassesTheModelCheck() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("model-\(UUID().uuidString)")
         try Data("not a model".utf8).write(to: url)

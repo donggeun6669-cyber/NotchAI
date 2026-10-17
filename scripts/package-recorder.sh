@@ -23,6 +23,8 @@ ditto build/Build/Products/Release/LectureRecorder.app "$stage/강의녹음.app"
 strip -S -x "$stage/강의녹음.app/Contents/MacOS/LectureRecorder"
 [[ -x "$stage/강의녹음.app/Contents/Resources/whisper-cli" ]] || { echo "error: whisper-cli missing" >&2; exit 1; }
 strip -S -x "$stage/강의녹음.app/Contents/Resources/whisper-cli"
+[[ -f "$stage/강의녹음.app/Contents/Resources/ggml-large-v3-turbo-q5_0.bin" ]] || {
+  echo "error: the transcription model is not in the app" >&2; exit 1; }
 # Stripping breaks a signature, and --deep does not reach executables under Resources: sign the
 # helper itself first, or macOS kills it on launch (exit 137).
 codesign --force --sign - "$stage/강의녹음.app/Contents/Resources/whisper-cli"

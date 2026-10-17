@@ -57,6 +57,15 @@ final class RecorderService: NSObject {
         var playsAloud: Bool { self == .onlineSpeakers || self == .onlineAirPods }
     }
 
+    /// How "맥 소리" reaches the file. NotchAI keeps the BlackHole path it was verified on;
+    /// 강의녹음 uses the built-in tap so a friend installs nothing (2026-10-18).
+    enum MacSound {
+        /// Route the output through the BlackHole driver and record its input.
+        case loopbackDriver
+        /// Read a Core Audio process tap (macOS 14.2+). Nothing to install.
+        case systemTap
+    }
+
     enum Phase: Equatable {
         case idle
         case checkingInput
@@ -81,13 +90,21 @@ final class RecorderService: NSObject {
         case noAirPods
         case routingFailed
         case deadInput
+        /// The tap delivered silence. Also what a refused system-audio permission looks like.
+        case deadSystemAudio
         case captureBehind(Int)
         case failed(String)
+
+        private static var appName: String {
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "NotchAI"
+        }
 
         var message: String {
             switch self {
             case .denied:
-                "마이크 권한이 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 마이크에서 NotchAI를 켜 주세요."
+                "마이크 권한이 없습니다. 시스템 설정 → 개인정보 보호 및 보안 → 마이크에서 \(Self.appName)을(를) 켜 주세요."
+            case .deadSystemAudio:
+                "입력 확인 실패 · 맥 소리가 들어오지 않았습니다. 강의가 재생 중인지 확인하고, 시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 녹음에서 \(Self.appName)을(를) 켜 주세요."
             case .noLoopback:
                 "온라인 강의를 녹음하려면 BlackHole이 필요합니다. 설치 후 재부팅해 주세요."
             case .noMicrophone:
@@ -160,7 +177,9 @@ final class RecorderService: NSObject {
 
     var isRunning: Bool { phase == .checkingInput || phase == .recording }
     var isBusy: Bool { phase != .idle }
-    var isLoopbackMissing: Bool { mode.usesLoopback && AudioDevices.loopback() == nil }
+    var isLoopbackMissing: Bool {
+        mode.usesLoopback && macSound == .loopbackDriver && AudioDevices.loopback() == nil
+    }
     var isListeningDeviceMissing: Bool { mode.playsAloud && listeningDevice == nil }
     var readinessTrouble: Trouble? {
         if mode.usesMicrophone && chosenMicrophone == nil { return .noMicrophone }
@@ -188,10 +207,14 @@ final class RecorderService: NSObject {
     private var troubleAfterFinish: Trouble?
     private var silentSince: Date?
     private let folderURL: URL
+    let macSound: MacSound
+    /// The running tap recording, for online presets under `.systemTap`. AVCapture is not used then.
+    private var systemCapture: SystemAudioCapture?
 
     /// Tests pass their own folder so they never touch the real recordings.
-    init(folder: URL = RecorderService.folder) {
+    init(folder: URL = RecorderService.folder, macSound: MacSound = .loopbackDriver) {
         folderURL = folder
+        self.macSound = macSound
         super.init()
         if let saved = UserDefaults.standard.string(forKey: Self.modeKey) {
             // Migrate the first recorder UI, which exposed engine terms instead of situations.
@@ -247,6 +270,8 @@ final class RecorderService: NSObject {
 
     // MARK: - Start and stop
 
+    private var usesSystemTap: Bool { macSound == .systemTap && mode.usesLoopback }
+
     func toggle() {
         if isRunning { stop() } else if !isBusy { start() }
     }
@@ -258,6 +283,12 @@ final class RecorderService: NSObject {
         silenceAlarm = false
         silentSince = nil
         reloadDevices()
+        // The tap asks for its own "system audio" permission when it starts; a friend recording
+        // only online lectures should not also be asked for the microphone.
+        if usesSystemTap {
+            beginRecording()
+            return
+        }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             beginRecording()
@@ -285,7 +316,13 @@ final class RecorderService: NSObject {
         keepPendingFile = troubleAfterFinish == nil && seconds >= Self.minimumSeconds
         phase = .finishing
         elapsed = TimeInterval(max(0, seconds))
-        output.stopRecording()
+        if let systemCapture {
+            systemCapture.stop { [weak self] error in
+                Task { @MainActor in self?.finishRecording(error: error) }
+            }
+        } else {
+            output.stopRecording()
+        }
         return keepPendingFile ? take : nil
     }
 
@@ -293,11 +330,14 @@ final class RecorderService: NSObject {
         guard let startedAt, isRunning else { return }
         // Backstop for the listener installed in `routeOutputToLoopbackOnly`: in the muted preset
         // the output *is* the loopback driver, so the mute key would silence the recording itself.
-        if mode == .onlineMuted, let loopback = AudioDevices.loopback() {
+        // The tap hears the Mac before the output's mute, so it needs no such guard.
+        if mode == .onlineMuted, macSound == .loopbackDriver, let loopback = AudioDevices.loopback() {
             AudioDevices.keepAudible(loopback)
         }
-        if let channel = output.connection(with: .audio)?.audioChannels.first {
-            level = Self.level(fromDecibels: Double(channel.averagePowerLevel))
+        let decibels: Float? = systemCapture?.averagePowerLevel
+            ?? output.connection(with: .audio)?.audioChannels.first?.averagePowerLevel
+        if let decibels {
+            level = Self.level(fromDecibels: Double(decibels))
             if phase == .checkingInput { startupPeakLevel = max(startupPeakLevel, level) }
         }
         let seconds = Date.now.timeIntervalSince(startedAt)
@@ -305,7 +345,7 @@ final class RecorderService: NSObject {
 
         // Compare wall time with what the capture output says it has actually written. This catches
         // the old "the app ran for an hour but the file lost 20%" failure while it is happening.
-        let captured = output.recordedDuration.seconds
+        let captured = systemCapture?.recordedSeconds ?? output.recordedDuration.seconds
         if captured.isFinite, captured >= 0, seconds - captured > 4 {
             let missing = Int((seconds - captured).rounded(.down))
             trouble = .captureBehind(missing)
@@ -327,11 +367,15 @@ final class RecorderService: NSObject {
             }
             // Sound came back: the start-up warning was a false alarm (the room was simply quiet
             // when recording began). Leaving it up teaches the user to ignore the real one.
-            if trouble == .deadInput { trouble = nil }
+            if trouble == .deadInput || trouble == .deadSystemAudio { trouble = nil }
         }
     }
 
     private func beginRecording() {
+        if usesSystemTap {
+            beginSystemTapRecording()
+            return
+        }
         guard routeOutputIfNeeded(), let device = resolveDevice() else {
             teardownDevices()
             return
@@ -381,6 +425,53 @@ final class RecorderService: NSObject {
         }
     }
 
+    /// The online presets without BlackHole. Speakers and AirPods become the Mac's output for the
+    /// recording, as the multi-output device did before; the muted preset leaves the output alone
+    /// and lets the tap hold every app's sound back from it.
+    private func beginSystemTapRecording() {
+        if mode.playsAloud {
+            guard let listen = listeningDevice else {
+                trouble = mode == .onlineAirPods ? .noAirPods : .noSpeakers
+                return
+            }
+            if let current = AudioDevices.defaultOutput(), current.uid != listen.uid {
+                guard AudioDevices.setDefaultOutput(listen) else {
+                    trouble = .routingFailed
+                    return
+                }
+                previousOutput = current
+            }
+        }
+        guard let clock = AudioDevices.defaultOutput() ?? AudioDevices.builtInOutput() else {
+            trouble = .routingFailed
+            teardownDevices()
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            let finalURL = Self.availableURL(
+                in: folderURL, filename: Self.filename(at: .now, mode: mode))
+            let url = Self.captureURL(for: finalURL)
+            let capture = SystemAudioCapture(muted: mode == .onlineMuted, clockUID: clock.uid, url: url)
+            try capture.start()
+            systemCapture = capture
+
+            pendingURL = url
+            pendingFinalURL = finalURL
+            startedAt = .now
+            phase = .checkingInput
+            elapsed = 0
+            level = 0
+            startupPeakLevel = 0
+            keepPendingFile = true
+            troubleAfterFinish = nil
+            scheduleStartupCheck()
+        } catch {
+            trouble = .failed(error.localizedDescription)
+            teardownDevices()
+        }
+    }
+
     /// Keeps the first three seconds as an explicit input check. A dead source is stopped and the
     /// test file is discarded automatically, so the UI never claims a silent lecture is recording.
     private func scheduleStartupCheck() {
@@ -393,7 +484,7 @@ final class RecorderService: NSObject {
             }
             if startupPeakLevel < Self.deadLevel {
                 silenceAlarm = true
-                troubleAfterFinish = .deadInput
+                troubleAfterFinish = usesSystemTap ? .deadSystemAudio : .deadInput
                 keepPendingFile = false
                 _ = stop()
             } else {
@@ -522,6 +613,7 @@ final class RecorderService: NSObject {
         let deferredTrouble = troubleAfterFinish
 
         session.stopRunning()
+        systemCapture = nil
         teardownDevices()
         startedAt = nil
         pendingURL = nil

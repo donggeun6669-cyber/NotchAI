@@ -184,6 +184,20 @@ struct RecorderTests {
         #expect(recorder.readinessTrouble == (AudioDevices.loopback() == nil ? .noLoopback : nil))
     }
 
+    @MainActor
+    @Test func theSystemTapNeverAsksForBlackHole() {
+        // 강의녹음 records the Mac's sound with the built-in tap: no preset may wait for BlackHole.
+        let recorder = RecorderService(folder: FileManager.default.temporaryDirectory
+            .appendingPathComponent("RecorderTests-\(UUID().uuidString)"), macSound: .systemTap)
+        for mode in RecorderService.Mode.allCases {
+            recorder.mode = mode
+            #expect(recorder.isLoopbackMissing == false)
+            #expect(recorder.readinessTrouble != .noLoopback)
+        }
+        recorder.mode = .onlineMuted
+        #expect(recorder.readinessTrouble == nil)
+    }
+
     @Test func recoveryFilesAreClearlyMarkedAndNeverOverwrite() throws {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("RecorderRecoveryTests-\(UUID().uuidString)")

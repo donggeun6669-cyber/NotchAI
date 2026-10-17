@@ -24,9 +24,11 @@
 	<string>15.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>온라인 강의를 녹음하기 위해 맥에서 재생되는 소리를 사용합니다. 녹음은 이 맥에만 저장됩니다.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>강의를 녹음하기 위해 마이크와 녹음 장치(BlackHole)를 사용합니다.</string>
+	<string>강의실에서 교수님 목소리를 녹음하기 위해 마이크를 사용합니다.</string>
 </dict>
 </plist>

@@ -41,9 +41,22 @@ final class Transcriber: NSObject {
     /// Files whose transcript was written during this run, for the UI to switch to "자막".
     private(set) var finished: Set<URL> = []
 
+    /// The 5-bit copy of the same model that 강의녹음 ships inside the app (574MB instead of
+    /// 1.6GB), so a friend never downloads anything (2026-10-18). Made from the checked full
+    /// model by scripts/build-whisper.sh and compared with it on real lectures before shipping.
+    nonisolated static let bundledModelName = "ggml-large-v3-turbo-q5_0"
+
     let folder: URL
-    var modelURL: URL { folder.appendingPathComponent("models").appendingPathComponent(Self.modelName) }
-    private var partialURL: URL { modelURL.appendingPathExtension("partial") }
+    /// The bundled model when the app carries one, otherwise the one-time download.
+    var modelURL: URL { bundledModelURL ?? downloadedModelURL }
+    private var downloadedModelURL: URL {
+        folder.appendingPathComponent("models").appendingPathComponent(Self.modelName)
+    }
+    private var bundledModelURL: URL? {
+        modelOverride ?? Bundle.main.url(forResource: Self.bundledModelName, withExtension: "bin")
+    }
+    private let modelOverride: URL?
+    private var partialURL: URL { downloadedModelURL.appendingPathExtension("partial") }
     /// Bundled by 강의녹음 only; NotchAI keeps using the DEAN script. Tests pass their own.
     var whisperURL: URL? { whisperOverride ?? Bundle.main.url(forResource: "whisper-cli", withExtension: nil) }
     private let whisperOverride: URL?
@@ -54,9 +67,10 @@ final class Transcriber: NSObject {
     private var download: URLSessionDownloadTask?
     private var processes: [URL: Process] = [:]
 
-    init(folder: URL = RecorderService.folder, whisper: URL? = nil) {
+    init(folder: URL = RecorderService.folder, whisper: URL? = nil, bundledModel: URL? = nil) {
         self.folder = folder
         whisperOverride = whisper
+        modelOverride = bundledModel
         super.init()
         refreshModel()
     }
@@ -66,13 +80,18 @@ final class Transcriber: NSObject {
     /// A file of exactly the published size counts as present; its hash was checked when it was
     /// downloaded (or it came from DEAN's own setup), and hashing 1.6GB at every launch is waste.
     func refreshModel() {
-        let size = (try? FileManager.default.attributesOfItem(atPath: modelURL.path)[.size] as? Int64) ?? nil
+        // A bundled model is covered by the app's code signature: nothing to fetch or check.
+        if let bundled = bundledModelURL, FileManager.default.fileExists(atPath: bundled.path) {
+            modelState = .ready
+            return
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: downloadedModelURL.path)[.size] as? Int64) ?? nil
         modelState = size == Self.modelBytes ? .ready : .missing
     }
 
     func downloadModel() {
         guard download == nil else { return }
-        try? FileManager.default.createDirectory(at: modelURL.deletingLastPathComponent(),
+        try? FileManager.default.createDirectory(at: downloadedModelURL.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: .main)
         let task = session.downloadTask(with: Self.modelRemote)
@@ -93,7 +112,7 @@ final class Transcriber: NSObject {
     /// Runs after the download lands in `partialURL`: size, then SHA-256, then the real name.
     private func verifyDownloadedModel() {
         modelState = .verifying
-        let partial = partialURL, final = modelURL
+        let partial = partialURL, final = downloadedModelURL
         Task {
             let ok = await Task.detached { Self.fileMatches(partial, bytes: Self.modelBytes, sha256: Self.modelSHA256) }.value
             if ok {
