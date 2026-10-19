@@ -323,6 +323,19 @@ final class CharacterLayerView: NSView {
                 circle.add(CharacterAnimations.pulse(period: 1.2, amount: 0.1), forKey: "pulse")
             }
             return circle
+        case .reply:
+            let image = NSImage(systemSymbolName: "ellipsis.bubble.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: d, weight: .bold)
+                    .applying(.init(paletteColors: [NSColor.white.withAlphaComponent(0.92)])))
+            let bubble = CALayer()
+            bubble.frame = frame
+            bubble.contents = image
+            bubble.contentsGravity = .resizeAspect
+            bubble.contentsScale = scale
+            if animate {
+                bubble.add(CharacterAnimations.pulse(period: 2.2, amount: 0.08), forKey: "pulse")
+            }
+            return bubble
         case .done:
             let image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: d, weight: .bold)

@@ -26,6 +26,7 @@ struct CharacterState: Equatable {
         case attention   // yellow "!"
         case error       // red "!"
         case done        // sparkle
+        case reply       // white speech bubble: your turn
     }
 
     var eyes: Eyes
@@ -71,6 +72,11 @@ struct CharacterState: Equatable {
             self.init(eyes: .happy, eyeOpenness: 1, glowColor: Self.doneGreen, glowRange: 0.5...0.8, badge: .done,
                       pulsePeriod: 3.4, pulseAmount: 0.02, gazeY: 0, wanderPeriod: nil, blinks: false,
                       pose: .cheer, tilt: 0)
+        case .awaitingReply:
+            // Its own colour (approval is yellow), eyes turned down toward the user, a slow nod.
+            self.init(eyes: .open, eyeOpenness: 1.1, glowColor: accent, glowRange: 0.35...0.7, badge: .reply,
+                      pulsePeriod: 2.2, pulseAmount: 0.03, gazeY: 0.05, wanderPeriod: nil, blinks: true,
+                      pose: .rest, tilt: 0.06)
         case .error:
             self.init(eyes: .sad, eyeOpenness: 1, glowColor: Self.errorRed, glowRange: 0.4...0.6, badge: .error,
                       pulsePeriod: 3.4, pulseAmount: 0.015, gazeY: 0.02, wanderPeriod: nil, blinks: false,
@@ -104,6 +110,7 @@ extension AgentState {
         case .thinking, .working: accent
         case .waitingForApproval: Color(nsColor: CharacterState.attentionYellow)
         case .completed: Color(nsColor: CharacterState.doneGreen)
+        case .awaitingReply: accent.opacity(0.7)
         case .error: Color(nsColor: CharacterState.errorRed)
         }
     }

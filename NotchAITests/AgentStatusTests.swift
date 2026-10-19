@@ -17,7 +17,7 @@ struct AgentStatusTests {
         #expect(status.activities.map(\.isDone) == [true, false])
     }
 
-    @Test func approvalThenCompletionReturnsToIdle() async throws {
+    @Test func approvalThenCompletionWaitsForTheUser() async throws {
         let status = AgentStatus()
         status.handle(.promptSubmitted("x"))
         status.handle(.approvalRequested("Allow Bash?"))
@@ -27,7 +27,27 @@ struct AgentStatusTests {
         status.handle(.completed("Done"))
         #expect(status.state == .completed)
         try await Task.sleep(for: AgentStatus.completedHold + .milliseconds(300))
+        #expect(status.state == .awaitingReply)
+        // The user's next message ends the wait.
+        status.handle(.promptSubmitted("next"))
+        #expect(status.state == .thinking)
+    }
+
+    @Test func anUnansweredTurnStopsWaitingAfterTheWindow() async throws {
+        let status = AgentStatus()
+        status.handle(.completed(nil), at: Date(timeIntervalSinceNow: -(AgentStatus.replyWindow + 60)))
+        try await Task.sleep(for: AgentStatus.completedHold + .milliseconds(300))
+        #expect(status.state == .awaitingReply)
+        status.expireIfStale(after: 600)
         #expect(status.state == .idle)
+    }
+
+    @Test func aFreshAnswerIsStillAwaited() async throws {
+        let status = AgentStatus()
+        status.handle(.completed(nil))
+        try await Task.sleep(for: AgentStatus.completedHold + .milliseconds(300))
+        status.expireIfStale(after: 600)
+        #expect(status.state == .awaitingReply)
     }
 
     @Test func staleBusySessionExpires() {
@@ -58,7 +78,7 @@ struct AgentStatusTests {
         #expect(status.currentTask == "macOS notch app")
         #expect(status.state == .completed)
         try await Task.sleep(for: AgentStatus.completedHold + .milliseconds(300))
-        #expect(status.state == .idle)   // the title did not cancel the return to idle
+        #expect(status.state == .awaitingReply)   // the title did not cancel the settle
 
         status.handle(.promptSubmitted("Fix it"))
         status.handle(.taskTitle("other"))

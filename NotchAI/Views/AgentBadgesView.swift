@@ -62,6 +62,7 @@ private struct Badge: View {
         case .thinking, .working: "작업 중"
         case .waitingForApproval: "승인 대기"
         case .completed: "끝남"
+        case .awaitingReply: "답 기다림"
         case .error: "오류"
         }
     }

@@ -7,6 +7,9 @@ enum AgentState: Equatable {
     case working
     case waitingForApproval
     case completed
+    /// The turn is over and the next move is the user's: what `completed` settles into, until the
+    /// user writes again (or `replyWindow` passes). Not the same as approval, which blocks a tool.
+    case awaitingReply
     case error
 
     var label: String {
@@ -16,6 +19,7 @@ enum AgentState: Equatable {
         case .working: "Working"
         case .waitingForApproval: "Approve?"
         case .completed: "Done"
+        case .awaitingReply: "Your turn"
         case .error: "Error"
         }
     }
@@ -44,6 +48,8 @@ enum AgentEvent: Equatable {
 final class AgentStatus {
     static let completedHold: Duration = .seconds(3)
     static let errorHold: Duration = .seconds(10)
+    /// How long a finished turn keeps waiting for the user's answer before it is just idle.
+    static let replyWindow: TimeInterval = 3600
     static let maxActivities = 4
 
     private(set) var state: AgentState = .idle
@@ -92,11 +98,11 @@ final class AgentStatus {
             finishRunningActivities()
             detail = message
             state = .completed
-            settle(after: Self.completedHold)
+            settle(after: Self.completedHold, into: .awaitingReply)
         case .failed(let message):
             detail = message
             state = .error
-            settle(after: Self.errorHold)
+            settle(after: Self.errorHold, into: .idle)
         case .interrupted:
             finishRunningActivities()
             detail = nil
@@ -105,8 +111,15 @@ final class AgentStatus {
     }
 
     /// A session that stopped writing while busy (closed window, crash) goes back to idle.
+    /// A finished turn nobody answered within `replyWindow` stops waiting too.
     func expireIfStale(now: Date = .now, after interval: TimeInterval) {
-        guard state.isBusy, let last = lastEventDate, now.timeIntervalSince(last) > interval else { return }
+        guard let last = lastEventDate else { return }
+        let quiet = now.timeIntervalSince(last)
+        if state == .awaitingReply, quiet > Self.replyWindow {
+            state = .idle
+            return
+        }
+        guard state.isBusy, quiet > interval else { return }
         finishRunningActivities()
         state = .idle
     }
@@ -117,11 +130,11 @@ final class AgentStatus {
         }
     }
 
-    private func settle(after delay: Duration) {
+    private func settle(after delay: Duration, into next: AgentState) {
         settleTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard let self, !Task.isCancelled else { return }
-            self.state = .idle
+            self.state = next
         }
     }
 }
