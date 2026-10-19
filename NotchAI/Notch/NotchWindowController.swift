@@ -116,8 +116,10 @@ final class NotchWindowController {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true    // clicks fall through until the mouse is over the panel
 
-        // Both agents idle and nothing new playing: only the characters stay beside the notch.
-        model.isCompact = { [app] in app.allIdle && app.desk.peekingTrack == nil }
+        // Always just the two characters beside the notch (2026-10-19, 동근님: 「괜히 길어지면 불편」).
+        // The wings used to widen with a status word, an idle note or a new track whenever an agent
+        // worked; now the character's own motion and face say it, and the strip never changes width.
+        model.isCompact = { true }
 
         let hosting = NSHostingView(rootView: NotchView(model: model, app: app))
         hosting.sizingOptions = []         // the window frame comes from NotchGeometry, not SwiftUI
