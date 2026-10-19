@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The strip beside the physical notch: Claude on the left wing, GPT on the right, each with its
 /// character and status. Nothing is drawn in the middle because the hardware notch covers it.
-/// Also used as the header row of the expanded panel so the transition stays continuous.
+/// Also used as the header row of the expanded panel so the transition stays continuous; there it
+/// is only the two characters, since the panel shows Claude and GPT big in its corner (2026-10-19).
 struct CollapsedNotchView: View {
     let left: any AIProvider
     let right: any AIProvider
@@ -12,6 +13,8 @@ struct CollapsedNotchView: View {
     let height: CGFloat
     /// Both agents idle: only the two characters, in narrow wings.
     var compact = false
+    /// The panel is open: just the characters, no status words.
+    var iconsOnly = false
 
     var body: some View {
         let wing = compact ? NotchGeometry.compactWingWidth : NotchGeometry.wingWidth
@@ -20,10 +23,10 @@ struct CollapsedNotchView: View {
         let trackOnLeft = track != nil && !trackOnRight && left.displayState == .idle
 
         HStack(spacing: 0) {
-            WingView(provider: left, track: trackOnLeft ? track : nil, compact: compact)
+            WingView(provider: left, track: trackOnLeft ? track : nil, compact: compact, iconsOnly: iconsOnly)
                 .frame(width: wing)
             Color.clear.frame(width: notchWidth)
-            WingView(provider: right, track: trackOnRight ? track : nil, compact: compact)
+            WingView(provider: right, track: trackOnRight ? track : nil, compact: compact, iconsOnly: iconsOnly)
                 .frame(width: wing)
         }
         .frame(height: height)
@@ -36,12 +39,15 @@ private struct WingView: View {
     let provider: any AIProvider
     let track: NowPlayingService.Track?
     let compact: Bool
+    let iconsOnly: Bool
 
     var body: some View {
         let state = provider.displayState
         HStack(spacing: 6) {
             AICharacterView(kind: provider.kind, state: state, size: 16)
-            if !compact {
+            if iconsOnly {
+                Spacer(minLength: 0)
+            } else if !compact {
                 if let track {
                     HStack(spacing: 3) {
                         Image(systemName: "music.note")

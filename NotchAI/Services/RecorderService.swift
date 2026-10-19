@@ -698,17 +698,18 @@ final class RecorderService: NSObject {
         let keys: Set<URLResourceKey> = [.creationDateKey]
         let urls = (try? FileManager.default.contentsOfDirectory(
             at: folderURL, includingPropertiesForKeys: Array(keys))) ?? []
-        recents = urls
+        // Newest first, and only as many files opened as it takes: the notch reloads this every
+        // time it opens, and the folder holds a whole semester.
+        let dated = urls
             .filter { $0.pathExtension == "m4a" }
-            .compactMap { url in
-                let created = (try? url.resourceValues(forKeys: keys).creationDate) ?? .distantPast
-                let seconds = Int(Self.duration(of: url))
-                guard seconds > 0 else { return nil }
-                return Take(url: url, startedAt: created, seconds: seconds)
-            }
-            .sorted { $0.startedAt > $1.startedAt }
-            .prefix(Self.recentCount)
-            .map { $0 }
+            .map { ($0, (try? $0.resourceValues(forKeys: keys).creationDate) ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+        var takes: [Take] = []
+        for (url, created) in dated where takes.count < Self.recentCount {
+            let seconds = Int(Self.duration(of: url))
+            if seconds > 0 { takes.append(Take(url: url, startedAt: created, seconds: seconds)) }
+        }
+        recents = takes
     }
 
     /// Length of a finished file, or 0 when it cannot be read.

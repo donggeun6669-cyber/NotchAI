@@ -35,7 +35,7 @@ struct NotchView: View {
                 CollapsedNotchView(left: app.provider(.claude), right: app.provider(.gpt),
                                    track: app.desk.peekingTrack,
                                    notchWidth: geometry.notchRect.width, height: geometry.notchHeight,
-                                   compact: compact)
+                                   compact: compact, iconsOnly: model.isExpanded)
                 if model.isExpanded {
                     ExpandedNotchView(app: app, notch: model)
                         .transition(.opacity.combined(with: .move(edge: .top)))

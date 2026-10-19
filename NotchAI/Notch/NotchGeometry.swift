@@ -11,7 +11,7 @@ struct NotchGeometry: Equatable {
     static let earRadius: CGFloat = 6
     /// Extra room around the panel so the expanded shadow is not clipped.
     static let shadowPadding: CGFloat = 20
-    static let minExpandedWidth: CGFloat = 640
+    static let minExpandedWidth: CGFloat = 700
     /// Height of the island on a screen without a notch.
     static let islandHeight: CGFloat = 32
     static let expandedBodyHeight: CGFloat = 392

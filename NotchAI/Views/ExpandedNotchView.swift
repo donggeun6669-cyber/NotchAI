@@ -3,42 +3,43 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Body of the expanded panel: both agents at a glance on top, then two columns — what they are
-/// doing, and what to open — and the desk (today, music, clipboard, shelf, timer) at the bottom.
+/// Body of the expanded panel (2026-10-19), split left and right first:
+/// left — the calendar with today's list, and the desk (music, clipboard, shelf, timer) under it;
+/// right — the recorder, the sites worth one click, and Claude and GPT as two big characters.
 struct ExpandedNotchView: View {
     @Bindable var app: AppModel
     let notch: NotchViewModel
 
     @State private var isDropTarget = false
 
-    /// Both agents are always on screen, so nothing here is "selected". The panel's own accent
-    /// is the red from the wallpaper; the agent colours stay on the agents.
+    /// The panel's own accent is the red from the wallpaper; the agent colours stay on the agents.
     private var accent: Color { NotchPalette.red }
+    /// The desk and the agent badges share this height, so the two bottom rows line up.
+    private static let bottomHeight: CGFloat = 58
 
     var body: some View {
-        VStack(spacing: 8) {
-            if app.desk.tab == .record {
-                // Recording is a focused task, not another 84pt desk widget. Give it the panel and
-                // remove unrelated agent/activity cards while this tab is selected.
-                DeskView(desk: app.desk, accent: accent,
-                         onFocusChange: { notch.setKeepsOpen($0) })
-                    .frame(maxHeight: .infinity)
-            } else {
-                HStack(spacing: 10) {
-                    ForEach(app.providers, id: \.kind) { item in
-                        AgentCardView(provider: item)
-                    }
-                }
-
-                MainPaneView(app: app)
-                    .frame(maxHeight: .infinity)
-
-                Divider().overlay(.white.opacity(0.12))
-
-                DeskView(desk: app.desk, accent: accent,
-                         onFocusChange: { notch.setKeepsOpen($0) })
-                    .frame(height: 84)
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 8) {
+                CalendarPane(schedule: app.desk.schedule, accent: accent)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                Divider().overlay(.white.opacity(0.1))
+                DeskView(app: app, accent: accent, onFocusChange: { notch.setKeepsOpen($0) })
+                    .frame(height: Self.bottomHeight)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider().overlay(.white.opacity(0.1))
+
+            VStack(alignment: .leading, spacing: 8) {
+                RecordPanel(recorder: app.desk.recorder, accent: accent)
+                Divider().overlay(.white.opacity(0.1))
+                SitesPane(launcher: app.launcher)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                AgentBadges(providers: app.providers)
+                    .frame(height: Self.bottomHeight)
+            }
+            .frame(width: 236)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)

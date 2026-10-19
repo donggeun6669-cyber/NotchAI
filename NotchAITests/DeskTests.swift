@@ -192,6 +192,59 @@ struct ScheduleTests {
         #expect(ScheduleService.daysLeft(tomorrow, from: Self.now) == 1)
     }
 
+    @Test func aPeriodCoversEveryDayItRuns() {
+        let data = Data("""
+        {"EV": [["10-19", "10-23", "", "", "복수전공 신청 기간"], ["10-21", "10-21", "18:00", "20:00", "약속"]]}
+        """.utf8)
+        let snapshot = ScheduleService.parse(data, now: Self.now)
+        let period = snapshot.events[0]
+        #expect(period.kind == .appointment)
+        #expect(period.spansDays)
+        #expect(period.covers(ScheduleService.date("10-21", time: "12:00", now: Self.now)!))
+        #expect(!period.covers(ScheduleService.date("10-24", time: "00:00", now: Self.now)!))
+        #expect(!snapshot.events[1].spansDays)
+        #expect(snapshot.events[1].time == "18:00")
+    }
+
+    @Test func upcomingKeepsARunningPeriodAndDropsWhatIsPast() {
+        let snapshot = ScheduleService.parse(Self.sample, now: Self.now)
+        let threeWeeks = Self.now.addingTimeInterval(20 * 86_400)
+        let titles = ScheduleService.upcoming(snapshot.items, through: threeWeeks, now: Self.now).map(\.title)
+        #expect(titles == ["서포터즈 인터뷰", "언데과 과제", "HUSS 2회차", "산학 EXPO"])
+        let later = ScheduleService.date("09-22", time: "09:00", now: Self.now)!
+        #expect(!ScheduleService.upcoming(snapshot.items, through: threeWeeks, now: later).map(\.title)
+            .contains("HUSS 2회차"))
+    }
+
+    @Test func threeWeeksStartOnThisWeeksMonday() {
+        // 2026-09-19 is a Saturday.
+        let weeks = ScheduleService.weeks(from: Self.now)
+        #expect(weeks.count == 3)
+        #expect(weeks.allSatisfy { $0.count == 7 })
+        let first = Calendar.current.dateComponents([.month, .day, .weekday], from: weeks[0][0])
+        #expect(first.month == 9 && first.day == 14 && first.weekday == 2)
+        let last = Calendar.current.dateComponents([.month, .day], from: weeks[2][6])
+        #expect(last.month == 10 && last.day == 4)
+    }
+
+    @Test func todayListsItsToDosWithTheUndatedAndTheLeftOvers() {
+        let data = Data("""
+        {"TD": [["밀린 일", "09-18"], ["오늘 일", "09-19"], ["날짜 없는 일", ""], ["모레 일", "09-21"], ["  ", "09-19"]]}
+        """.utf8)
+        let todos = ScheduleService.parse(data, now: Self.now).todos
+        #expect(todos.count == 4)
+        #expect(ScheduleService.todos(todos, on: Self.now, now: Self.now).map(\.title) == ["밀린 일", "오늘 일", "날짜 없는 일"])
+        let later = ScheduleService.date("09-21", time: "09:00", now: Self.now)!
+        #expect(ScheduleService.todos(todos, on: later, now: Self.now).map(\.title) == ["모레 일"])
+    }
+
+    @Test func weeksCanStartBeforeThisOne() {
+        let weeks = ScheduleService.weeks(from: Self.now, before: 2, count: 5)
+        let first = Calendar.current.dateComponents([.month, .day], from: weeks[0][0])
+        #expect(first.month == 8 && first.day == 31)
+        #expect(Calendar.current.component(.day, from: weeks[2][0]) == 14)
+    }
+
     @Test func aDateFarInThePastBelongsToNextYear() {
         // Late December, looking at a January date.
         let december = ScheduleService.date("12-28", time: "09:00", now: Self.now)!
