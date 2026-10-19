@@ -238,6 +238,23 @@ struct ScheduleTests {
         #expect(ScheduleService.todos(todos, on: later, now: Self.now).map(\.title) == ["모레 일"])
     }
 
+    @Test func remindersBecomeToDosInTheFilesOrder() {
+        let calendar = Calendar.current
+        let at = { (minute: Int) in Self.now.addingTimeInterval(TimeInterval(minute * 60)) }
+        let rows = RemindersToDoReader.todos(from: [
+            (title: "날짜 없는 일", due: nil, created: at(0)),
+            (title: "모레 일", due: DateComponents(year: 2026, month: 9, day: 21), created: at(1)),
+            (title: " ", due: DateComponents(year: 2026, month: 9, day: 19), created: at(2)),
+            (title: "오늘 늦게 넣은 일", due: DateComponents(year: 2026, month: 9, day: 19, hour: 17, minute: 0), created: at(5)),
+            (title: "오늘 일", due: DateComponents(year: 2026, month: 9, day: 19), created: at(3)),
+        ], calendar: calendar)
+        #expect(rows.map(\.title) == ["오늘 일", "오늘 늦게 넣은 일", "모레 일", "날짜 없는 일"])
+        // A timed reminder still counts by its day.
+        #expect(rows[1].date == calendar.date(from: DateComponents(year: 2026, month: 9, day: 19)))
+        #expect(ScheduleService.todos(rows, on: Self.now, now: Self.now).map(\.title)
+                == ["오늘 일", "오늘 늦게 넣은 일", "날짜 없는 일"])
+    }
+
     @Test func weeksCanStartBeforeThisOne() {
         let weeks = ScheduleService.weeks(from: Self.now, before: 2, count: 5)
         let first = Calendar.current.dateComponents([.month, .day], from: weeks[0][0])

@@ -44,6 +44,8 @@ final class ScheduleService: CalendarSource {
 
     private(set) var snapshot = Snapshot()
     private(set) var fileMissing = false
+    /// The to-dos live from Reminders; the file's TD snapshot only when Reminders cannot be read.
+    let reminders = RemindersToDoReader()
 
     private var lastModified: Date?
     private var isReading = false
@@ -72,7 +74,12 @@ final class ScheduleService: CalendarSource {
 
     /// To-dos for a day. Today also gets the undated ones and the ones left over from earlier days.
     func todos(on day: Date, now: Date = .now) -> [ToDo] {
-        Self.todos(snapshot.todos, on: day, now: now)
+        Self.todos(reminders.todos ?? snapshot.todos, on: day, now: now)
+    }
+
+    func start() {
+        reminders.start()
+        poll()
     }
 
     nonisolated static func todos(_ todos: [ToDo], on day: Date, now: Date = .now) -> [ToDo] {
@@ -112,6 +119,7 @@ final class ScheduleService: CalendarSource {
     /// The file is read off the main thread: a main-thread read here once froze the app before
     /// its window even appeared (it used to live in another app's container).
     func poll() {
+        reminders.poll()
         guard !isReading else { return }
         isReading = true
         let known = lastModified

@@ -28,6 +28,7 @@ final class AppModel {
     func start() {
         providers.forEach { $0.start() }
         desk.start()
+        schedule.start()
         pollAll()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pollAll() }
