@@ -7,7 +7,7 @@ import Observation
 /// instead of inventing anything.
 @MainActor
 @Observable
-final class ScheduleService {
+final class ScheduleService: CalendarSource {
     /// The one copy inside DEAN (2026-09-22). The old copy in Widgy's group container stopped
     /// being written that day and only goes stale.
     nonisolated static let dataURL = FileManager.default.homeDirectoryForCurrentUser
@@ -24,38 +24,8 @@ final class ScheduleService {
         var note: String
     }
 
-    /// One appointment or deadline. Classes are not items: the calendar is for what is not
-    /// already on the timetable.
-    struct Item: Equatable, Identifiable, Sendable {
-        enum Kind: Sendable { case deadline, appointment }
-
-        let id = UUID()
-        /// First day (with the time when there is one).
-        var date: Date
-        /// Last day; the same day for anything that is not a period.
-        var end: Date
-        /// "18:00", or "" for all day.
-        var time: String
-        var title: String
-        var kind: Kind
-
-        var spansDays: Bool { !Calendar.current.isDate(date, inSameDayAs: end) }
-
-        /// Whether this item is on `day` (any time that day).
-        func covers(_ day: Date, calendar: Calendar = .current) -> Bool {
-            let day = calendar.startOfDay(for: day)
-            return calendar.startOfDay(for: date) <= day && day <= calendar.startOfDay(for: end)
-        }
-    }
-
-    /// An open to-do from the Reminders list 「오늘 할 일」, which `todo_sync.py` snapshots into the
-    /// same file every 15 minutes (unfinished ones only).
-    struct ToDo: Equatable, Identifiable, Sendable {
-        let id = UUID()
-        var title: String
-        /// The planned day; nil when the reminder has none.
-        var date: Date?
-    }
+    typealias Item = CalendarItem
+    typealias ToDo = CalendarToDo
 
     struct Snapshot: Equatable, Sendable {
         var updated: Date?
@@ -82,6 +52,18 @@ final class ScheduleService {
         guard let updated = snapshot.updated else { return true }
         return Date.now.timeIntervalSince(updated) > Self.staleAfter
     }
+
+    var notice: CalendarNotice? {
+        if fileMissing {
+            return CalendarNotice(text: "일정 파일 없음", help: Self.dataURL.path)
+        }
+        if isStale {
+            return CalendarNotice(text: "오래된 자료", help: "상황판 동기화(sync_all.py)가 하루 넘게 돌지 않았습니다")
+        }
+        return nil
+    }
+    var showsKindLegend: Bool { true }
+    var emptyWord: String { "약속·마감·할 일" }
 
     /// Everything on one day.
     func items(on day: Date) -> [Item] {
@@ -119,24 +101,12 @@ final class ScheduleService {
         }
     }
 
-    /// Days until a date: 0 is today.
     nonisolated static func daysLeft(_ date: Date, from now: Date = .now) -> Int {
-        let calendar = Calendar.current
-        return calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
-                                       to: calendar.startOfDay(for: date)).day ?? 0
+        CalendarMath.daysLeft(date, from: now)
     }
 
-    /// `count` weeks of days, Monday first, starting `before` weeks ahead of the week that holds `now`.
     nonisolated static func weeks(from now: Date, before: Int = 0, count: Int = 3) -> [[Date]] {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .current
-        calendar.firstWeekday = 2
-        let today = calendar.startOfDay(for: now)
-        let back = (calendar.component(.weekday, from: today) + 5) % 7   // Monday → 0, Sunday → 6
-        guard let monday = calendar.date(byAdding: .day, value: -back - before * 7, to: today) else { return [] }
-        return (0..<count).map { week in
-            (0..<7).compactMap { calendar.date(byAdding: .day, value: week * 7 + $0, to: monday) }
-        }
+        CalendarMath.weeks(from: now, before: before, count: count)
     }
 
     /// The file is read off the main thread: a main-thread read here once froze the app before

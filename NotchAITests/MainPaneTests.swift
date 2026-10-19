@@ -36,6 +36,49 @@ struct LauncherTests {
 }
 
 @MainActor
+struct LauncherEditingTests {
+    private func launcher() -> LauncherService { LauncherService(load: false, storeURL: nil) }
+
+    @Test func foldersAndFilesAreAddedOnceAndNamedAfterThemselves() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("LauncherTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("보고서.pdf")
+        try Data().write(to: file)
+
+        let list = launcher()
+        list.add([folder, file, file])
+        #expect(list.items.map(\.name) == [folder.lastPathComponent, "보고서"])
+        #expect(list.items[0].targets[0].icon == "folder")
+        #expect(list.items[1].targets[0].icon == "doc")
+    }
+
+    @Test func aWebsiteGetsAnAddressAndANameEvenWhenLeftBlank() {
+        let list = launcher()
+        #expect(list.addWebsite(name: "", address: "naver.com"))
+        #expect(list.addWebsite(name: "메일", address: "https://mail.google.com"))
+        #expect(!list.addWebsite(name: "x", address: "not an address"))
+        #expect(list.items.map(\.name) == ["naver.com", "메일"])
+        #expect(list.items[0].targets[0].value == "https://naver.com")
+    }
+
+    @Test func removingTheLastButtonRemovesTheItem() {
+        let list = launcher()
+        list.addWebsite(name: "A", address: "a.com")
+        list.addWebsite(name: "B", address: "b.com")
+        list.remove(list.items[0].targets[0])
+        #expect(list.items.map(\.name) == ["B"])
+    }
+
+    @Test func webAddressesAreRecognised() {
+        #expect(LauncherService.webAddress("  skku.edu ") == "https://skku.edu")
+        #expect(LauncherService.webAddress("http://localhost:3000") == "http://localhost:3000")
+        #expect(LauncherService.webAddress("hello") == nil)
+        #expect(LauncherService.webAddress("") == nil)
+    }
+}
+
+@MainActor
 struct FocusTimerTests {
     @Test func shortRunsAreNotRecorded() {
         let timer = FocusTimerService(persists: false)

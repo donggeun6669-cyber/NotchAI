@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// A calendar of appointments and deadlines from DEAN's schedule file, so the 상황판 does not have
-/// to be opened just to look at it. Three weeks show at once and it scrolls a week at a time.
-/// Classes are left out on purpose: they are on the timetable already.
-/// The list below is one day — today unless another day is tapped — with that day's
-/// appointments, deadlines and to-dos (2026-10-19).
+/// A calendar in the notch, so another app does not have to be opened just to look at it.
+/// Three weeks show at once and it scrolls a week at a time. The days come from a
+/// `CalendarSource`: DEAN's schedule file in NotchAI (appointments, deadlines and the Reminders
+/// to-dos, classes left out), Calendar.app in NotchDesk.
+/// The list below is one day — today unless another day is tapped (2026-10-19).
 struct CalendarPane: View {
-    let schedule: ScheduleService
+    let source: any CalendarSource
     let accent: Color
 
     /// Weeks kept above this one, to scroll back to.
@@ -24,10 +24,10 @@ struct CalendarPane: View {
     private let thisWeek: Date
     private let weeks: [[Date]]
 
-    init(schedule: ScheduleService, accent: Color, now: Date = .now) {
-        self.schedule = schedule
+    init(source: any CalendarSource, accent: Color, now: Date = .now) {
+        self.source = source
         self.accent = accent
-        weeks = ScheduleService.weeks(from: now, before: Self.weeksBefore, count: Self.weekCount)
+        weeks = CalendarMath.weeks(from: now, before: Self.weeksBefore, count: Self.weekCount)
         thisWeek = weeks[Self.weeksBefore][0]
         _topWeek = State(initialValue: thisWeek)
     }
@@ -100,19 +100,22 @@ struct CalendarPane: View {
                 .background(Capsule().fill(.white.opacity(0.1)))
             }
             Spacer(minLength: 0)
-            if schedule.fileMissing {
-                Text("일정 파일 없음")
+            if let notice = source.notice {
+                Text(notice.text)
                     .font(.system(size: 9.5))
                     .foregroundStyle(accent.opacity(0.9))
-                    .help(ScheduleService.dataURL.path)
-            } else if schedule.isStale {
-                Text("오래된 자료")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(accent.opacity(0.9))
-                    .help("상황판 동기화(sync_all.py)가 하루 넘게 돌지 않았습니다")
+                    .help(notice.help)
+                if let title = notice.actionTitle, let url = notice.action {
+                    Button(title) { NSWorkspace.shared.open(url) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
             }
-            Legend(color: accent, filled: true, label: "마감")
-            Legend(color: .white.opacity(0.8), filled: false, label: "약속")
+            if source.showsKindLegend {
+                Legend(color: accent, filled: true, label: "마감")
+                Legend(color: .white.opacity(0.8), filled: false, label: "약속")
+            }
         }
     }
 
@@ -123,9 +126,10 @@ struct CalendarPane: View {
         let isToday = calendar.isDate(day, inSameDayAs: now)
         let isPast = day < calendar.startOfDay(for: now)
         let isSelected = selected.map { calendar.isDate($0, inSameDayAs: day) } ?? false
-        let items = schedule.items(on: day)
-        let deadlines = items.filter { $0.kind == .deadline }.count
-        let appointments = items.filter { $0.kind == .appointment && !$0.spansDays }.count
+        let items = source.items(on: day)
+        // Deadlines first when the source tells them apart, then appointments; periods are a line.
+        let dots = Array(items.filter { !$0.spansDays }
+            .sorted { $0.kind == .deadline && $1.kind != .deadline }.prefix(3))
         let period = items.contains { $0.spansDays }
         let dayNumber = calendar.component(.day, from: day)
         let isSunday = calendar.component(.weekday, from: day) == 1
@@ -141,11 +145,8 @@ struct CalendarPane: View {
                 .background { if isToday { Capsule().fill(accent) } }
 
             HStack(spacing: 2.5) {
-                ForEach(0..<min(deadlines, 3), id: \.self) { _ in
-                    Circle().fill(accent).frame(width: 4, height: 4)
-                }
-                ForEach(0..<min(appointments, 3 - min(deadlines, 3)), id: \.self) { _ in
-                    Circle().stroke(.white.opacity(0.8), lineWidth: 1).frame(width: 4, height: 4)
+                ForEach(dots) { item in
+                    Marker(item: item, accent: accent, size: 4)
                 }
             }
             .frame(height: 4)
@@ -177,8 +178,8 @@ struct CalendarPane: View {
 
     private func dayList(_ day: Date, now: Date) -> some View {
         let isToday = Calendar.current.isDate(day, inSameDayAs: now)
-        let items = schedule.items(on: day)
-        let todos = schedule.todos(on: day, now: now)
+        let items = source.items(on: day)
+        let todos = source.todos(on: day, now: now)
 
         return VStack(alignment: .leading, spacing: 3) {
             Text((isToday ? "오늘 · " : "") + Self.dayTitle(day))
@@ -187,7 +188,7 @@ struct CalendarPane: View {
                 .foregroundStyle(isToday ? accent.opacity(0.95) : .white.opacity(0.5))
 
             if items.isEmpty && todos.isEmpty {
-                Text(isToday ? "오늘은 약속·마감·할 일 없음" : "이날은 약속·마감·할 일 없음")
+                Text((isToday ? "오늘은 " : "이날은 ") + source.emptyWord + " 없음")
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.35))
             } else {
@@ -205,20 +206,13 @@ struct CalendarPane: View {
         }
     }
 
-    private func itemRow(_ item: ScheduleService.Item) -> some View {
+    private func itemRow(_ item: CalendarItem) -> some View {
         HStack(spacing: 7) {
-            Group {
-                if item.kind == .deadline {
-                    Circle().fill(accent)
-                } else {
-                    Circle().stroke(.white.opacity(0.8), lineWidth: 1)
-                }
-            }
-            .frame(width: 5, height: 5)
-            .frame(width: 10)
+            Marker(item: item, accent: accent, size: 6)
+                .frame(width: 10)
 
             Text(item.title)
-                .font(.system(size: 11.5, weight: item.kind == .deadline ? .medium : .regular))
+                .font(.system(size: 11.5, weight: item.kind == .deadline && item.color == nil ? .medium : .regular))
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -237,8 +231,8 @@ struct CalendarPane: View {
         .help(Self.line(for: item))
     }
 
-    private func todoRow(_ todo: ScheduleService.ToDo, now: Date) -> some View {
-        let late = todo.date.map { ScheduleService.daysLeft($0, from: now) < 0 } ?? false
+    private func todoRow(_ todo: CalendarToDo, now: Date) -> some View {
+        let late = todo.date.map { CalendarMath.daysLeft($0, from: now) < 0 } ?? false
         return HStack(spacing: 7) {
             RoundedRectangle(cornerRadius: 2)
                 .stroke(.white.opacity(0.45), lineWidth: 1)
@@ -268,7 +262,7 @@ struct CalendarPane: View {
     // MARK: Text
 
     /// Time on the right of a row: "18:00", "~10/23" for a period, "" for all day.
-    static func when(_ item: ScheduleService.Item) -> String {
+    static func when(_ item: CalendarItem) -> String {
         if item.spansDays {
             let calendar = Calendar.current
             return "~\(calendar.component(.month, from: item.end))/\(calendar.component(.day, from: item.end))"
@@ -276,10 +270,10 @@ struct CalendarPane: View {
         return item.time
     }
 
-    static func line(for item: ScheduleService.Item) -> String {
-        let kind = item.kind == .deadline ? "마감" : "약속"
+    static func line(for item: CalendarItem) -> String {
         let time = when(item)
-        return "[\(kind)] \(item.title)" + (time.isEmpty ? "" : " · \(time)")
+        let kind = item.color != nil ? "" : item.kind == .deadline ? "[마감] " : "[약속] "
+        return kind + item.title + (time.isEmpty ? "" : " · \(time)")
     }
 
     static func dayTitle(_ day: Date) -> String {
@@ -297,6 +291,26 @@ struct CalendarPane: View {
 
     static func weekday(_ date: Date) -> String {
         ["일", "월", "화", "수", "목", "금", "토"][Calendar.current.component(.weekday, from: date) - 1]
+    }
+}
+
+/// The dot for one item: its calendar's colour, or red (deadline) / hollow (appointment).
+private struct Marker: View {
+    let item: CalendarItem
+    let accent: Color
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let color = item.color {
+                Circle().fill(color)
+            } else if item.kind == .deadline {
+                Circle().fill(accent)
+            } else {
+                Circle().stroke(.white.opacity(0.8), lineWidth: 1)
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 

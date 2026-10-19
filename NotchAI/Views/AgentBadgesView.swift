@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Claude and GPT in the bottom-right corner of the open notch: a big character each and whether
@@ -62,6 +63,26 @@ private struct Badge: View {
         case .waitingForApproval: "승인 대기"
         case .completed: "끝남"
         case .error: "오류"
+        }
+    }
+}
+
+/// The desktop apps the sessions belong to. Bringing the app forward is as close as the notch
+/// can get: there is no way to open one particular session from outside.
+enum AgentApp {
+    static func bundleIDs(for kind: ProviderKind) -> [String] {
+        switch kind {
+        case .claude: ["com.anthropic.claudefordesktop"]
+        case .gpt: ["com.openai.codex", "com.openai.chat"]
+        }
+    }
+
+    @MainActor
+    static func activate(_ kind: ProviderKind) {
+        for id in bundleIDs(for: kind) {
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            return
         }
     }
 }

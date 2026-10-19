@@ -125,8 +125,7 @@ final class RecorderService: NSObject {
         }
     }
 
-    nonisolated static let folder = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Documents/Lecture-Recordings")
+    nonisolated static let folder = AppPaths.recordings
     /// Takes shorter than this are treated as input checks and kept under an honest recovery name.
     nonisolated static let minimumSeconds = 3
     nonisolated static let recentCount = 5

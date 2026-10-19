@@ -151,7 +151,8 @@ struct RecordPanel: View {
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(.white.opacity(0.65))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(recorder.isBusy)

@@ -13,8 +13,7 @@ final class FocusTimerService {
         var seconds: Int
     }
 
-    nonisolated static let fileURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/NotchAI/focus-log.json")
+    nonisolated static let fileURL = AppPaths.support.appendingPathComponent("focus-log.json")
     /// Runs shorter than this are dropped: a mis-click is not a study session.
     nonisolated static let minimumSeconds = 60
     nonisolated static let keepDays = 30

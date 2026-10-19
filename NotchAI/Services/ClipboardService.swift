@@ -13,8 +13,7 @@ final class ClipboardService {
         let date: Date
     }
 
-    static let storeURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/NotchAI/clipboard.json")
+    static let storeURL = AppPaths.support.appendingPathComponent("clipboard.json")
 
     static let limit = 12
 

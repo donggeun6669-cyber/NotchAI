@@ -1,28 +1,9 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// The desktop apps the sessions belong to. Bringing the app forward is as close as the notch
-/// can get: there is no way to open one particular session from outside.
-enum AgentApp {
-    static func bundleIDs(for kind: ProviderKind) -> [String] {
-        switch kind {
-        case .claude: ["com.anthropic.claudefordesktop"]
-        case .gpt: ["com.openai.codex", "com.openai.chat"]
-        }
-    }
-
-    @MainActor
-    static func activate(_ kind: ProviderKind) {
-        for id in bundleIDs(for: kind) {
-            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-            return
-        }
-    }
-}
-
-/// The sites and folders worth one click, and the page each project is served at.
-/// A tab in the bottom strip since the recorder took its old place (2026-10-19).
+/// The sites, folders and files worth one click. Right-click a button to take it off the list;
+/// add more from the menu or by dropping them on the list (2026-10-19).
 struct LauncherPane: View {
     let launcher: LauncherService
     var columns = 2
@@ -71,12 +52,19 @@ struct LauncherPane: View {
                     }
                     .buttonStyle(.plain)
                     .help(entry.target.value)
+                    .contextMenu {
+                        if let url = entry.target.url, url.isFileURL {
+                            Button("Finder에서 보기") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                        }
+                        Button("목록에서 삭제", role: .destructive) { launcher.remove(entry.target) }
+                    }
                 }
             }
             if launcher.items.isEmpty {
-                Text("열 것이 없습니다 — 위 메뉴에서 목록을 만들 수 있습니다")
+                Text("비어 있습니다 — 폴더·파일을 여기로 끌어다 놓거나 위 메뉴에서 추가하세요")
                     .font(.system(size: 10.5))
                     .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -87,18 +75,67 @@ struct LauncherMenu: View {
 
     var body: some View {
         Menu {
-            Button("목록 편집 (launcher.json)") { launcher.openFile() }
-            Button("파일 다시 읽기") { launcher.reload() }
+            Button("폴더·파일 추가…") { Self.chooseFiles(into: launcher) }
+            Button("웹사이트 추가…") { Self.askForWebsite(into: launcher) }
             Divider()
-            Button("기본 목록으로 다시 만들기") { launcher.rebuild() }
+            Text("버튼을 우클릭하면 삭제할 수 있습니다")
+            Divider()
+            Button("목록 파일 직접 편집 (launcher.json)") { launcher.openFile() }
+            Button("목록 파일 다시 읽기") { launcher.reload() }
+            if LauncherService.hasDefaultList {
+                Button("기본 목록으로 다시 만들기") { launcher.rebuild() }
+            }
         } label: {
-            Image(systemName: "slider.horizontal.3")
+            Image(systemName: "plus")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(.white.opacity(0.5))
                 .frame(width: 16, height: 14)
                 .contentShape(Rectangle())
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help("자주 가는 곳 추가 · 편집")
+    }
+
+    /// The standard Open panel, not modal: the notch keeps its clock and meters moving meanwhile.
+    static func chooseFiles(into launcher: LauncherService) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "추가"
+        panel.message = "자주 가는 곳에 넣을 폴더나 파일을 고르세요"
+        NSApp.activate()
+        panel.begin { response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            MainActor.assumeIsolated { launcher.add(urls) }
+        }
+    }
+
+    /// A small dialog with a name and an address.
+    static func askForWebsite(into launcher: LauncherService) {
+        let name = NSTextField(frame: NSRect(x: 0, y: 30, width: 260, height: 24))
+        name.placeholderString = "이름 (비워 두면 주소로)"
+        let address = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        address.placeholderString = "주소 (예: naver.com)"
+        let fields = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 54))
+        fields.addSubview(name)
+        fields.addSubview(address)
+
+        let alert = NSAlert()
+        alert.messageText = "웹사이트 추가"
+        alert.accessoryView = fields
+        alert.addButton(withTitle: "추가")
+        alert.addButton(withTitle: "취소")
+        alert.window.initialFirstResponder = address
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if !launcher.addWebsite(name: name.stringValue, address: address.stringValue) {
+            let failed = NSAlert()
+            failed.messageText = "주소를 알아볼 수 없습니다"
+            failed.informativeText = "예: naver.com 또는 https://www.naver.com"
+            failed.runModal()
+        }
     }
 }
 
@@ -115,8 +152,10 @@ enum ShortTime {
 }
 
 /// The launcher under the recorder in the right column (2026-10-19), with its own small title.
+/// Folders, files and links dropped here are added to it.
 struct SitesPane: View {
     let launcher: LauncherService
+    @State private var isDropTarget = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -129,6 +168,28 @@ struct SitesPane: View {
                 LauncherMenu(launcher: launcher)
             }
             LauncherPane(launcher: launcher, columns: 2)
+        }
+        .padding(isDropTarget ? 4 : 0)
+        .background {
+            if isDropTarget {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            }
+        }
+        .onDrop(of: [.fileURL, .url], isTargeted: $isDropTarget) { providers in
+            Task { @MainActor in
+                for item in providers {
+                    if item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
+                       let data = try? await item.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
+                       let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        launcher.add([url])
+                    } else if let url = try? await item.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL,
+                              url.scheme?.hasPrefix("http") == true {
+                        launcher.addWebsite(name: "", address: url.absoluteString)
+                    }
+                }
+            }
+            return true
         }
     }
 }

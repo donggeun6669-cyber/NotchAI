@@ -17,7 +17,7 @@ xcodebuild -project NotchAI.xcodeproj -scheme LectureRecorder -configuration Rel
   OTHER_SWIFT_FLAGS="-file-prefix-map $PWD=. -file-prefix-map $HOME=~"
 
 stage=dist/강의녹음
-rm -rf dist && mkdir -p "$stage"
+rm -rf "$stage" dist/강의녹음.zip && mkdir -p "$stage"
 ditto build/Build/Products/Release/LectureRecorder.app "$stage/강의녹음.app"
 # Debug symbols carry the build folder's absolute paths; the friend has no use for them.
 strip -S -x "$stage/강의녹음.app/Contents/MacOS/LectureRecorder"

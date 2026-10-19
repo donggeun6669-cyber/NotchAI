@@ -7,6 +7,8 @@ import Observation
 final class AppModel {
     let providers: [any AIProvider]
     let desk = DeskModel()
+    /// DEAN's schedule file (appointments, deadlines, Reminders to-dos) for the calendar.
+    let schedule = ScheduleService()
     /// One-click openers: the sites in daily use and each project's own page.
     let launcher = LauncherService()
 
@@ -36,5 +38,6 @@ final class AppModel {
     private func pollAll() {
         providers.forEach { $0.poll() }
         desk.poll()
+        schedule.poll()
     }
 }
