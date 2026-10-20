@@ -125,7 +125,7 @@ final class ScheduleService: CalendarSource {
         let known = lastModified
         Task.detached(priority: .utility) {
             let url = ScheduleService.dataURL
-            let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            let modified = ScheduleService.modificationDate(of: url)
             let data = modified != nil && modified != known ? try? Data(contentsOf: url) : nil
             await MainActor.run {
                 self.isReading = false
@@ -135,6 +135,14 @@ final class ScheduleService: CalendarSource {
                 self.snapshot = ScheduleService.parse(data)
             }
         }
+    }
+
+    /// When the file last changed, asked of the file system every time. `URL.resourceValues` keeps
+    /// the answer inside the URL, and off the main thread nothing ever clears it: asked of the one
+    /// static `dataURL`, the date stayed at its first value, so from 2026-09-20 to 2026-10-20 the
+    /// notch read the file once at launch and never again (a sync showed only after a restart).
+    nonisolated static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 
     /// The widget file: CL = classes, DL = deadlines, EV = events, TD = open to-dos (dates are

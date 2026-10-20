@@ -268,6 +268,37 @@ struct ScheduleTests {
         let january = ScheduleService.date("01-05", time: "09:00", now: december)!
         #expect(january > december)
     }
+
+    @Test func severalAllDayAppointmentsOnOneDayAreAllListed() {
+        let data = Data("""
+        {"EV": [["10-26", "10-26", "", "", "누나랑 영화"], ["10-26", "10-26", "", "", "저녁 약속"]],
+         "DL": [["10-26", "13:30", "발표"], ["10-26", "", "제출"]]}
+        """.utf8)
+        let snapshot = ScheduleService.parse(data, now: Self.now)
+        let day = ScheduleService.date("10-26", time: "12:00", now: Self.now)!
+        #expect(snapshot.items.filter { $0.covers(day) }.map(\.title) == ["누나랑 영화", "저녁 약속", "발표", "제출"])
+    }
+
+    /// The notch polls the one static `dataURL`; its change date has to follow the file.
+    /// Asked through `URL.resourceValues` off the main thread it stayed at the first answer (2026-10-20).
+    @Test func theChangeDateFollowsTheFileWhenAskedOfTheSameURLOffTheMainThread() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("notch-schedule-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("{}".utf8).write(to: url)
+        let first = Date(timeIntervalSince1970: 1_790_000_000)
+        try FileManager.default.setAttributes([.modificationDate: first], ofItemAtPath: url.path)
+        let before = await Task.detached { ScheduleService.modificationDate(of: url) }.value
+        #expect(before == first)
+
+        // Replaced the way the scripts do it: written beside, then swapped in.
+        let beside = url.appendingPathExtension("tmp")
+        try Data("{\"EV\": []}".utf8).write(to: beside)
+        let second = first.addingTimeInterval(60)
+        try FileManager.default.setAttributes([.modificationDate: second], ofItemAtPath: beside.path)
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: beside)
+        let after = await Task.detached { ScheduleService.modificationDate(of: url) }.value
+        #expect(after == second)
+    }
 }
 
 @MainActor
