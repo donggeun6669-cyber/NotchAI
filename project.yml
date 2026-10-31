@@ -147,6 +147,8 @@ targets:
           - "Character/JarvisOrbView.swift"
           - "Views/JarvisPane.swift"
           - "Services/JarvisChat.swift"
+          - "Services/JarvisApprovals.swift"
+          - "Views/JarvisApprovalsView.swift"
           - "Views/AgentBadgesView.swift"
           - "Views/CollapsedNotchView.swift"
           - "Views/ExpandedNotchView.swift"

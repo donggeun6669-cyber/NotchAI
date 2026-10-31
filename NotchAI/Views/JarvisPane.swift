@@ -8,6 +8,8 @@ import SwiftUI
 struct JarvisPane: View {
     let jarvis: JarvisService
     @Bindable var chat: JarvisChat
+    /// The 결재함; tapping the yellow line opens it in place of the conversation.
+    let approvals: JarvisApprovals
     /// The notch must stay open while the question is being typed.
     var onFocusChange: (Bool) -> Void = { _ in }
 
@@ -16,9 +18,14 @@ struct JarvisPane: View {
             header
             jobs
             Divider().overlay(.white.opacity(0.08))
-            conversation
-                .frame(maxHeight: .infinity)
-            input
+            if approvals.isOpen {
+                JarvisApprovalsView(approvals: approvals, onFocusChange: onFocusChange)
+                    .frame(maxHeight: .infinity)
+            } else {
+                conversation
+                    .frame(maxHeight: .infinity)
+                input
+            }
         }
         .onDisappear { onFocusChange(false) }
     }
@@ -127,13 +134,14 @@ struct JarvisPane: View {
     private var jobs: some View {
         if let presence = jarvis.presence {
             VStack(alignment: .leading, spacing: 2) {
-                if presence.approvals > 0 {
+                if presence.approvals > 0, !approvals.isOpen {
                     Button {
-                        jarvis.openApp()
+                        approvals.open()
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "exclamationmark.circle.fill")
-                            Text("결재 \(presence.approvals)건이 기다립니다 — 앱에서 확인")
+                            Text("결재 \(presence.approvals)건이 기다립니다 — 눌러서 보기")
+                            Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
                         }
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(Color(nsColor: CharacterState.attentionYellow))

@@ -18,6 +18,7 @@ final class AppModel {
     /// open panel its jobs and a conversation with it.
     let jarvis: JarvisService
     let chat: JarvisChat
+    let approvals: JarvisApprovals
     /// What is shown, and so what runs.
     let features: NotchFeatures
 
@@ -46,6 +47,7 @@ final class AppModel {
         let jarvis = JarvisService()
         self.jarvis = jarvis
         chat = JarvisChat(jarvis: jarvis)
+        approvals = JarvisApprovals(jarvis: jarvis)
     }
 
     func start() {
@@ -53,6 +55,7 @@ final class AppModel {
         for feature in features.enabled { switched(feature, on: true, resize: false) }
         if !features.deskTabs.contains(desk.tab), let first = features.deskTabs.first { desk.tab = first }
         jarvis.start()   // polls on its own clock, with its own back-off
+        openApprovalForScreenshots()
         pollAll()
         let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pollAll() }
@@ -83,6 +86,20 @@ final class AppModel {
             desk.tab = tab
         }
         if resize { resizePanels() }
+    }
+
+    /// `open NotchAI.app --args -startExpanded YES -jarvisOpenApproval <id|list> [-jarvisApprovalStep confirm]`
+    /// shows the 결재함 without clicking (screenshots, like `-startExpanded`).
+    private func openApprovalForScreenshots() {
+        guard let target = UserDefaults.standard.string(forKey: "jarvisOpenApproval"), !target.isEmpty else { return }
+        approvals.open()
+        guard target != "list" else { return }
+        Task {
+            await approvals.show(target)
+            if UserDefaults.standard.string(forKey: "jarvisApprovalStep") == "confirm" {
+                approvals.ask(.approve, now: .distantPast)
+            }
+        }
     }
 
     /// Something that changes the panel's size was switched (a part, or Jarvis's address).

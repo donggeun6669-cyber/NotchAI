@@ -33,7 +33,8 @@ struct ExpandedNotchView: View {
                         CalendarPane(source: app.schedule, accent: accent)
                             .frame(maxHeight: .infinity, alignment: .top)
                     } else if app.jarvis.isEnabled {
-                        JarvisPane(jarvis: app.jarvis, chat: app.chat, onFocusChange: { notch.setKeepsOpen($0) })
+                        JarvisPane(jarvis: app.jarvis, chat: app.chat, approvals: app.approvals,
+                                   onFocusChange: { notch.setKeepsOpen($0) })
                             .frame(maxHeight: .infinity, alignment: .top)
                     } else {
                         Spacer(minLength: 0)
