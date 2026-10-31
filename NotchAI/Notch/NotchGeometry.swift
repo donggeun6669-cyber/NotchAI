@@ -104,6 +104,24 @@ struct NotchGeometry: Equatable {
         return CGRect(x: notchRect.midX - width / 2, y: screenFrame.maxY - height, width: width, height: height)
     }
 
+    /// Where a panel beside the open notch goes (NotchAI's 결재, 2026-11-01): to the right, top-aligned
+    /// with the panel body; to the left when the right side has no room; under the panel when
+    /// neither side does (a portrait display).
+    static func sideFrame(beside panel: CGRect, in screen: CGRect, size: CGSize, top: CGFloat,
+                          gap: CGFloat = 10, margin: CGFloat = 8) -> CGRect {
+        let height = min(size.height, top - screen.minY - margin)
+        if panel.maxX + gap + size.width <= screen.maxX - margin {
+            return CGRect(x: panel.maxX + gap, y: top - height, width: size.width, height: height)
+        }
+        if panel.minX - gap - size.width >= screen.minX + margin {
+            return CGRect(x: panel.minX - gap - size.width, y: top - height, width: size.width, height: height)
+        }
+        let below = panel.minY - gap
+        let x = min(max(panel.maxX - size.width, screen.minX + margin), screen.maxX - margin - size.width)
+        let fitted = min(height, below - screen.minY - margin)
+        return CGRect(x: x, y: below - fitted, width: size.width, height: fitted)
+    }
+
     /// Area (global coordinates) that reacts to the mouse in each state.
     func hitRect(expanded: Bool, compact: Bool = false) -> CGRect {
         let size = expanded ? expandedSize : (compact ? compactCollapsedSize : collapsedSize)

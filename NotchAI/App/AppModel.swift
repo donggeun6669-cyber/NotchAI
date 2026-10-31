@@ -33,7 +33,7 @@ final class AppModel {
 
     /// A recording is on (or being checked or closed), or the last one failed and has not been
     /// dismissed: the wings widen for its clock or its warning. Otherwise they stay narrow.
-    var collapsedIsNarrow: Bool { !recorder.isBusy && !recorder.needsAttention }
+    var collapsedIsNarrow: Bool { !recorder.isBusy && !recorder.needsAttention && approvals.pill == nil }
 
     var notchLayout: NotchLayout { Self.layout(features: features, jarvis: jarvis.isEnabled) }
 
@@ -48,6 +48,7 @@ final class AppModel {
         self.jarvis = jarvis
         chat = JarvisChat(jarvis: jarvis)
         approvals = JarvisApprovals(jarvis: jarvis)
+        jarvis.onApprovalCount = { [weak approvals] count in approvals?.countChanged(to: count) }
     }
 
     func start() {
@@ -55,7 +56,6 @@ final class AppModel {
         for feature in features.enabled { switched(feature, on: true, resize: false) }
         if !features.deskTabs.contains(desk.tab), let first = features.deskTabs.first { desk.tab = first }
         jarvis.start()   // polls on its own clock, with its own back-off
-        openApprovalForScreenshots()
         pollAll()
         let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pollAll() }
@@ -86,20 +86,6 @@ final class AppModel {
             desk.tab = tab
         }
         if resize { resizePanels() }
-    }
-
-    /// `open NotchAI.app --args -startExpanded YES -jarvisOpenApproval <id|list> [-jarvisApprovalStep confirm]`
-    /// shows the 결재함 without clicking (screenshots, like `-startExpanded`).
-    private func openApprovalForScreenshots() {
-        guard let target = UserDefaults.standard.string(forKey: "jarvisOpenApproval"), !target.isEmpty else { return }
-        approvals.open()
-        guard target != "list" else { return }
-        Task {
-            await approvals.show(target)
-            if UserDefaults.standard.string(forKey: "jarvisApprovalStep") == "confirm" {
-                approvals.ask(.approve, now: .distantPast)
-            }
-        }
     }
 
     /// Something that changes the panel's size was switched (a part, or Jarvis's address).
@@ -135,7 +121,7 @@ final class AppModel {
         let agents = features.isOn(.agents)
         // The characters share the wings with the recorder's mark and Jarvis's light.
         var layout = NotchLayout(narrowWing: agents ? 54 : NotchGeometry.compactWingWidth,
-                                 wideWing: agents ? 104 : 80, body: panelSize)
+                                 wideWing: agents ? 130 : 112, body: panelSize)
         if !jarvis && !features.hasLeftColumn {
             let gap = sectionSpacing * 2 + 1
             var height = recorderHeight

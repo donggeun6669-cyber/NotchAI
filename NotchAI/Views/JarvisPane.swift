@@ -8,7 +8,7 @@ import SwiftUI
 struct JarvisPane: View {
     let jarvis: JarvisService
     @Bindable var chat: JarvisChat
-    /// The 결재함; tapping the yellow line opens it in place of the conversation.
+    /// The 결재함; the yellow line opens its panel beside the notch.
     let approvals: JarvisApprovals
     /// The notch must stay open while the question is being typed.
     var onFocusChange: (Bool) -> Void = { _ in }
@@ -18,14 +18,9 @@ struct JarvisPane: View {
             header
             jobs
             Divider().overlay(.white.opacity(0.08))
-            if approvals.isOpen {
-                JarvisApprovalsView(approvals: approvals, onFocusChange: onFocusChange)
-                    .frame(maxHeight: .infinity)
-            } else {
-                conversation
-                    .frame(maxHeight: .infinity)
-                input
-            }
+            conversation
+                .frame(maxHeight: .infinity)
+            input
         }
         .onDisappear { onFocusChange(false) }
     }
@@ -134,13 +129,13 @@ struct JarvisPane: View {
     private var jobs: some View {
         if let presence = jarvis.presence {
             VStack(alignment: .leading, spacing: 2) {
-                if presence.approvals > 0, !approvals.isOpen {
+                if presence.approvals > 0 {
                     Button {
                         approvals.open()
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "exclamationmark.circle.fill")
-                            Text("결재 \(presence.approvals)건이 기다립니다 — 눌러서 보기")
+                            Text("결재 \(presence.approvals)건 — 옆 패널에서 보기")
                             Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
                         }
                         .font(.system(size: 10.5, weight: .semibold))
@@ -280,6 +275,9 @@ struct JarvisInputField: NSViewRepresentable {
     let isEnabled: Bool
     let onSubmit: (String) -> Void
     let onFocusChange: (Bool) -> Void
+    var textColor: NSColor = .white
+    var placeholderColor: NSColor = .white.withAlphaComponent(0.35)
+    var font: NSFont = .systemFont(ofSize: 12)
 
     final class Field: NSTextField {
         var onFocus: ((Bool) -> Void)?
@@ -323,8 +321,8 @@ struct JarvisInputField: NSViewRepresentable {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 12)
-        field.textColor = .white
+        field.font = font
+        field.textColor = textColor
         field.lineBreakMode = .byTruncatingHead
         field.cell?.isScrollable = true
         field.delegate = context.coordinator
@@ -336,7 +334,7 @@ struct JarvisInputField: NSViewRepresentable {
         field.onFocus = { [onFocusChange] in onFocusChange($0) }
         field.isEnabled = isEnabled
         field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
-            .foregroundColor: NSColor.white.withAlphaComponent(0.35), .font: NSFont.systemFont(ofSize: 12)])
+            .foregroundColor: placeholderColor, .font: font])
         // Push text in only when it changed outside the field: cleared after sending.
         if field.stringValue != text, field.currentEditor() == nil || text.isEmpty { field.stringValue = text }
     }

@@ -40,6 +40,8 @@ struct JarvisApproval: Identifiable, Equatable {
 
     var id: String
     var kind: String
+    /// Which team raised it ("dev", "secretary", …).
+    var team: String?
     var status: String
     var statusWord: String
     var title: String
@@ -63,20 +65,51 @@ struct JarvisApproval: Identifiable, Equatable {
         }
     }
 
-    /// What 「승인」 will do, said before the confirming tap.
-    var approveConsequence: String {
+    /// The short kind for the pill beside the notch.
+    var shortKind: String {
+        switch kind {
+        case "mail_draft": "메일"
+        case "code_change": "코드"
+        default: kind
+        }
+    }
+
+    var teamWord: String? {
+        switch team {
+        case "dev"?: "개발팀"
+        case "secretary"?: "비서실"
+        case let other?: other
+        case nil: nil
+        }
+    }
+
+    /// What the primary button will do, said on the card before it is pressed.
+    var consequence: String {
         switch kind {
         case "mail_draft":
-            return "「확인함」으로 기록합니다. 메일은 보내지 않습니다 — 보내기는 Gmail에서 직접."
+            let to = mail.map { $0.to.isEmpty ? "기존 받는 사람" : $0.to.joined(separator: ", ") } ?? "받는 사람 미상"
+            return "받는 사람 \(to) · 보내기는 Gmail에서 직접"
         case "code_change":
             let name = code?.repoName ?? "저장소"
             let base = code?.baseBranch ?? "기본 브랜치"
-            let push = code?.remote == nil ? "원격 저장소가 없어 push는 하지 않습니다." : "합친 뒤 \(code?.remote ?? "") 로 push합니다."
-            return "\(name)의 \(base)에 이 변경을 합칩니다. \(push)"
+            let push = code?.remote.map { "\($0)에 push" } ?? "push 안 함"
+            return "\(name) \(base)에 합쳐요 · \(push)"
         default:
-            return "데스크탑 Jarvis가 이 항목을 처리합니다."
+            return "데스크탑 Jarvis가 처리해요"
         }
     }
+
+    /// Files and tests in one line, for a code change.
+    var evidence: String? {
+        guard let code else { return nil }
+        let files = "파일 \(code.files.count)개"
+        guard !code.tests.isEmpty else { return files + " · 테스트 기록 없음" }
+        let failed = code.tests.filter { !$0.ok }.count
+        return files + (failed == 0 ? " · 테스트 \(code.tests.count)번 모두 통과" : " · 테스트 \(failed)번 실패")
+    }
+
+    /// Code is merged on approval, so it takes a press-and-hold; a mail draft is only marked as seen.
+    var needsHold: Bool { kind != "mail_draft" }
 
     static func parse(_ object: [String: Any]) -> JarvisApproval? {
         guard let id = object["id"] as? String else { return nil }
@@ -84,7 +117,7 @@ struct JarvisApproval: Identifiable, Equatable {
         let status = object["status"] as? String ?? ""
         let payload = object["payload"] as? [String: Any] ?? [:]
         var item = JarvisApproval(
-            id: id, kind: kind, status: status,
+            id: id, kind: kind, team: object["team"] as? String, status: status,
             statusWord: object["status_ko"] as? String ?? status,
             title: (object["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id,
             summary: object["summary"] as? String,
@@ -141,157 +174,236 @@ struct JarvisApproval: Identifiable, Equatable {
     }
 }
 
-/// The 결재함 as the notch keeps it: the pending list, the item open in detail, and the result of
-/// a decision as the server reported it.
+/// The 결재함 beside the open notch (2026-11-01 5차): the waiting items as cards, decisions in as few
+/// taps as possible, and only what the server answered afterwards.
+///
+/// Approving code is a press-and-hold on the card (the view); confirming a mail draft is one tap.
+/// 반려 hides the card at once and is sent only after `undoDelay` unless 되돌리기 is pressed — if the
+/// app quits first nothing was sent and the item simply stays pending.
 @MainActor
 @Observable
 final class JarvisApprovals {
-    enum Decision: String { case approve, reject }
-
-    /// A decision that has been asked for and waits for the confirming tap.
-    enum Step: Equatable {
-        case reading
-        case confirming(Decision)
-        case sending(Decision)
+    struct PendingReject: Identifiable, Equatable {
+        var id: String
+        var title: String
+        var deadline: Date
+        var note: String?
     }
 
-    /// The 결재함 is showing (instead of the conversation).
-    var isOpen = false
-    private(set) var items: [JarvisApproval] = []
-    /// The item open in detail, as last read from the server.
-    private(set) var selected: JarvisApproval?
-    private(set) var step: Step = .reading
-    private(set) var isLoading = false
-    /// Something that went wrong talking to the server, or its refusal (already decided).
-    private(set) var problem: String?
-    var note = ""
+    /// Shown beside the closed notch for a while when a new item arrives.
+    struct Pill: Equatable {
+        var count: Int
+        var kind: String
+    }
 
-    /// A confirming tap this soon after asking is the same click landing again.
-    static let confirmGrace: TimeInterval = 0.6
+    /// Waiting items as last read (without diffs).
+    private(set) var items: [JarvisApproval] = []
+    /// Items read in full (with the diff), for 「바뀐 줄 보기」.
+    private(set) var details: [String: JarvisApproval] = [:]
+    /// Decided items as the server answered, shown on their card until closed.
+    private(set) var results: [String: JarvisApproval] = [:]
+    /// A card's own trouble (the server refused, or did not answer).
+    private(set) var problems: [String: String] = [:]
+    private(set) var deciding: Set<String> = []
+    private(set) var pendingRejects: [PendingReject] = []
+    /// What the server said about the last sent 반려, for a moment.
+    private(set) var rejectNotice: String?
+    private(set) var pill: Pill?
+    /// The list could not be read.
+    private(set) var problem: String?
+    var notes: [String: String] = [:]
+
+    /// Height the panel's content asks for (reported by the view).
+    @ObservationIgnored var contentHeight: CGFloat = 0
+    @ObservationIgnored var undoDelay: Duration = .seconds(5)
+    @ObservationIgnored var pillDuration: Duration = .seconds(10)
 
     @ObservationIgnored private let jarvis: JarvisService
-    @ObservationIgnored private var askedAt: Date?
+    @ObservationIgnored private var dismissedIDs: Set<String> = []
+    @ObservationIgnored private var knownIDs: Set<String>?
+    @ObservationIgnored private var forcedOpen = false
+    @ObservationIgnored private var pillTask: Task<Void, Never>?
+    @ObservationIgnored private var noticeTask: Task<Void, Never>?
 
     init(jarvis: JarvisService) {
         self.jarvis = jarvis
     }
 
+    // MARK: What the panel shows
+
+    /// Cards in order: decided ones (their result) first, then the waiting ones not being rejected.
+    var cards: [JarvisApproval] {
+        let rejecting = Set(pendingRejects.map(\.id))
+        let decided = results.values.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+        return decided + items.filter { !rejecting.contains($0.id) && results[$0.id] == nil }
+    }
+
+    var waitingCount: Int { items.filter { results[$0.id] == nil }.count - pendingRejects.count }
+
+    /// The panel beside the open notch should be up: something waits that has not been dismissed,
+    /// a decision is showing its result, or a 반려 can still be undone. Never with nothing in it.
+    var wantsPanel: Bool {
+        if !pendingRejects.isEmpty || rejectNotice != nil || !results.isEmpty { return true }
+        guard !cards.isEmpty else { return false }
+        return forcedOpen || items.contains { !dismissedIDs.contains($0.id) }
+    }
+
+    /// The yellow line, or the pill: show the panel even if it was dismissed.
     func open() {
-        isOpen = true
-        selected = nil
-        step = .reading
+        forcedOpen = true
         Task { await refresh() }
     }
 
-    func close() {
-        isOpen = false
-        selected = nil
-        step = .reading
-        problem = nil
+    /// ✕: away until a new item arrives. Results already read are closed with it.
+    func dismiss() {
+        dismissedIDs = Set(items.map(\.id))
+        results.removeAll()
+        problems.removeAll()
+        forcedOpen = false
     }
 
-    func refresh() async {
+    /// A decided card's 「닫기」.
+    func closeResult(_ id: String) {
+        results[id] = nil
+        problems[id] = nil
+    }
+
+    // MARK: Reading
+
+    /// Presence reported a different number waiting: read the list, and announce what is new.
+    func countChanged(to count: Int) {
+        Task { await refresh(announcing: true) }
+    }
+
+    func refresh(announcing: Bool = false) async {
         guard let url = url("/approvals?status=pending") else { return }
-        isLoading = true
-        defer { isLoading = false }
-        switch await get(url) {
-        case .success((let data, 200)):
-            if let list = JarvisApproval.parse(list: data) {
-                items = list
-                problem = nil
-            } else {
-                problem = "결재함 목록을 읽지 못했습니다"
-            }
-        case .success((_, let status)):
-            problem = "결재함을 열지 못했습니다 (\(status))"
-        case .failure(let reason):
-            problem = reason.explanation
+        guard case .success((let data, 200)) = await get(url), let list = JarvisApproval.parse(list: data) else {
+            problem = "결재함을 읽지 못했어요"
+            return
+        }
+        problem = nil
+        items = list
+        let ids = Set(list.map(\.id))
+        if announcing, let known = knownIDs, let first = list.first(where: { !known.contains($0.id) }) {
+            showPill(Pill(count: list.count, kind: first.shortKind))
+        }
+        knownIDs = (knownIDs ?? []).union(ids)
+        if list.isEmpty && results.isEmpty { forcedOpen = false }
+    }
+
+    /// The full item, for its diff.
+    func loadDetail(_ id: String) async {
+        guard details[id] == nil, let url = url("/approvals/\(id)") else { return }
+        if case .success((let data, 200)) = await get(url), let item = JarvisApproval.parse(item: data) {
+            details[id] = item
         }
     }
 
-    /// Opens one item with everything the server has on it (the diff is only in the detail).
-    func show(_ id: String) async {
-        step = .reading
-        note = ""
-        problem = nil
-        if let listed = items.first(where: { $0.id == id }) { selected = listed }
-        await reload(id)
-    }
-
-    func back() {
-        selected = nil
-        step = .reading
-        problem = nil
-        Task { await refresh() }
-    }
-
-    private func reload(_ id: String) async {
-        guard let url = url("/approvals/\(id)") else { return }
-        isLoading = true
-        defer { isLoading = false }
-        switch await get(url) {
-        case .success((let data, 200)):
-            if let item = JarvisApproval.parse(item: data) { selected = item } else { problem = "항목을 읽지 못했습니다" }
-        case .success((_, 404)):
-            problem = "서버에 없는 항목입니다"
-        case .success((_, let status)):
-            problem = "항목을 열지 못했습니다 (\(status))"
-        case .failure(let reason):
-            problem = reason.explanation
+    private func showPill(_ pill: Pill) {
+        self.pill = pill
+        pillTask?.cancel()
+        let duration = pillDuration
+        pillTask = Task { [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled else { return }
+            self?.pill = nil
         }
+    }
+
+    func hidePill() {
+        pillTask?.cancel()
+        pill = nil
     }
 
     // MARK: Deciding
 
-    /// The first tap: asks for a confirming one.
-    func ask(_ decision: Decision, now: Date = .now) {
-        guard selected?.isPending == true, step == .reading else { return }
-        askedAt = now
-        step = .confirming(decision)
+    /// 승인 (code, after the hold) or 확인 (mail, one tap). Shows what the server answered.
+    func approve(_ id: String) async {
+        guard !deciding.contains(id) else { return }
+        await post(.approve, id: id, note: note(for: id))
     }
 
-    func cancel() {
-        if case .confirming = step { step = .reading }
+    /// 반려 / 문제 있음: the card goes at once; the request waits out `undoDelay`.
+    func reject(_ id: String, now: Date = .now) {
+        guard let item = items.first(where: { $0.id == id }), !pendingRejects.contains(where: { $0.id == id }) else { return }
+        let entry = PendingReject(id: id, title: item.title, deadline: now.addingTimeInterval(Self.seconds(undoDelay)),
+                                  note: note(for: id))
+        pendingRejects.append(entry)
+        let delay = undoDelay
+        Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, self.pendingRejects.contains(where: { $0.id == id }) else { return }   // undone
+            self.pendingRejects.removeAll { $0.id == id }
+            await self.post(.reject, id: id, note: entry.note)
+        }
     }
 
-    /// The confirming tap. Sends the decision and shows what the server answered.
-    func confirm(now: Date = .now) {
-        guard case .confirming(let decision) = step, let item = selected else { return }
-        if let askedAt, now.timeIntervalSince(askedAt) < Self.confirmGrace { return }
-        step = .sending(decision)
-        problem = nil
-        let note = self.note.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task { await send(decision, item: item.id, note: note.isEmpty ? nil : note) }
+    /// 되돌리기: nothing is sent and the card comes back.
+    func undoReject(_ id: String) {
+        pendingRejects.removeAll { $0.id == id }
     }
 
-    func send(_ decision: Decision, item id: String, note: String?) async {
-        defer { step = .reading }
+    private enum Decision: String { case approve, reject }
+
+    private func post(_ decision: Decision, id: String, note: String?) async {
         guard let url = url("/approvals/\(id)/\(decision.rawValue)") else { return }
-        var body: [String: Any] = [:]
-        if let note { body["note"] = note }
-        let json = try? JSONSerialization.data(withJSONObject: body)
+        deciding.insert(id)
+        problems[id] = nil
+        defer { deciding.remove(id) }
+        let json = try? JSONSerialization.data(withJSONObject: note.map { ["note": $0] } ?? [:])
         do {
             let (data, status) = try await jarvis.transport.send("POST", url, json: json)
-            switch status {
-            case 200:
-                if let item = JarvisApproval.parse(item: data) {
-                    selected = item
-                } else {
-                    problem = "서버 답을 읽지 못했습니다 — 다시 불러와 확인합니다"
-                    await reload(id)
-                }
-            default:
+            if status == 200, let item = JarvisApproval.parse(item: data) {
+                settle(item, after: decision)
+            } else {
                 let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
-                problem = detail ?? "처리하지 못했습니다 (\(status))"
-                await reload(id)   // show what the item really is now (e.g. already decided)
+                problems[id] = detail ?? "처리하지 못했어요 (\(status))"
+                await reread(id)
             }
         } catch {
-            // The request may or may not have arrived: say so, and read the item's real state.
-            problem = "결과를 받지 못했습니다 — 서버에서 다시 읽은 상태를 보여 드립니다 (\(JarvisOffline(error: error).explanation))"
-            await reload(id)
+            // It may or may not have arrived: say so, and show the item as the server has it now.
+            problems[id] = "결과를 받지 못했어요 — 서버에서 다시 읽은 상태예요"
+            await reread(id)
         }
-        items.removeAll { $0.id == id && selected?.isPending == false }
-        jarvis.askNow()   // the 결재 count beside the notch
+        notes[id] = nil
+        jarvis.askNow()   // the count beside the notch
+        await refresh()
+    }
+
+    /// A decision the server confirmed: an approval keeps its card with the result; a 반려 is said
+    /// in the snackbar.
+    private func settle(_ item: JarvisApproval, after decision: Decision) {
+        if decision == .reject, item.status == "rejected" {
+            say("반려됐어요" + (item.outcome.first.map { " · " + $0 } ?? ""))
+        } else {
+            results[item.id] = item
+        }
+    }
+
+    /// After a refusal or no answer: the item as it really is now.
+    private func reread(_ id: String) async {
+        guard let url = url("/approvals/\(id)") else { return }
+        guard case .success((let data, 200)) = await get(url), let item = JarvisApproval.parse(item: data) else { return }
+        if !item.isPending { results[id] = item }   // already decided (here or elsewhere): show how
+    }
+
+    private func say(_ notice: String) {
+        rejectNotice = notice
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.rejectNotice = nil
+        }
+    }
+
+    private func note(for id: String) -> String? {
+        let text = (notes[id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    private static func seconds(_ duration: Duration) -> TimeInterval {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     // MARK: Network

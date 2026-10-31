@@ -21,6 +21,8 @@ final class NotchViewModel {
     /// Whether the collapsed notch should shrink to just the character (agent idle).
     /// A closure so SwiftUI tracks the agent state it reads.
     @ObservationIgnored var isCompact: () -> Bool = { false }
+    /// A panel shown beside the open notch (NotchAI's 결재): the mouse over it keeps the notch open.
+    @ObservationIgnored var besideRect: CGRect?
 
     @ObservationIgnored private var pendingChange: Task<Void, Never>?
 
@@ -60,7 +62,8 @@ final class NotchViewModel {
     /// which decides if the window should take clicks or let them fall through.
     @discardableResult
     func updateMouse(_ point: CGPoint) -> Bool {
-        let inside = geometry.hitRect(expanded: isExpanded, compact: !isExpanded && isCompact())
+        let beside = isExpanded ? besideRect.map { $0.insetBy(dx: -14, dy: -6).contains(point) } ?? false : false
+        let inside = beside || geometry.hitRect(expanded: isExpanded, compact: !isExpanded && isCompact())
             .insetBy(dx: -4, dy: -4).contains(point)
         guard inside != isHovering else { return inside }
         isHovering = inside

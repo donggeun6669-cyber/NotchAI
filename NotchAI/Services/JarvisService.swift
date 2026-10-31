@@ -339,6 +339,9 @@ final class JarvisService {
     private(set) var backoff = JarvisBackoff()
     /// The push-to-talk hook. Nil until voice exists.
     var voice: (any JarvisVoiceControl)?
+    /// Called when the number of waiting 결재 items changes (the 결재 panel reads the list then).
+    @ObservationIgnored var onApprovalCount: ((Int) -> Void)?
+    @ObservationIgnored private var lastApprovalCount: Int?
 
     /// The address as typed in the settings; "" turns Jarvis off.
     var address: String {
@@ -440,6 +443,10 @@ final class JarvisService {
             backoff.succeeded()
             lastAnswer = now
             connection = .online(presence)
+            if presence.approvals != lastApprovalCount {
+                lastApprovalCount = presence.approvals
+                onApprovalCount?(presence.approvals)
+            }
             if jobsDue(before: before, after: presence, now: now) { await refreshJobs(now: now) }
         case .failure(let reason):
             backoff.failed()

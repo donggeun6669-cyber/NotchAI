@@ -8,6 +8,18 @@ final class NotchPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// A panel that appears beside the open notch while the app has something for it (NotchAI's 결재,
+/// 2026-11-01). Apps without one leave `NotchWindowController.beside` nil.
+@MainActor
+struct NotchBeside {
+    let width: CGFloat
+    /// Whether it should be up beside an open notch now.
+    let isWanted: () -> Bool
+    /// The height its content asks for.
+    let contentHeight: () -> CGFloat
+    let makeView: () -> NSView
+}
+
 extension Notification.Name {
     /// Posted when the "show on every display" setting changes.
     static let notchScreensChanged = Notification.Name("NotchAI.screensChanged")
@@ -23,6 +35,7 @@ final class NotchWindowController {
         let displayID: CGDirectDisplayID
         let panel: NotchPanel
         let model: NotchViewModel
+        var beside: NotchPanel?
 
         init(displayID: CGDirectDisplayID, panel: NotchPanel, model: NotchViewModel) {
             self.displayID = displayID
@@ -43,6 +56,8 @@ final class NotchWindowController {
 
     private let app: AppModel
     private var screens: [Screen] = []
+    /// The panel beside the open notch, if this app has one.
+    var beside: NotchBeside?
     private var mouseTimer: Timer?
     private var mouseInterval: TimeInterval = 0
     private var observers: [NSObjectProtocol] = []
@@ -73,6 +88,7 @@ final class NotchWindowController {
         for screen in screens where !wantedIDs.contains(screen.displayID) {
             screen.model.collapse()
             screen.panel.orderOut(nil)
+            screen.beside?.orderOut(nil)
         }
         screens.removeAll { !wantedIDs.contains($0.displayID) }
 
@@ -166,6 +182,7 @@ final class NotchWindowController {
             if screen.panel.ignoresMouseEvents == inside {
                 screen.panel.ignoresMouseEvents = !inside
             }
+            updateBeside(screen)
             let frame = screen.model.geometry.screenFrame
             if screen.model.isExpanded || screen.model.isHovering
                 || (frame.minX...frame.maxX).contains(location.x)
@@ -175,5 +192,48 @@ final class NotchWindowController {
         }
         let wanted = near ? Self.fastInterval : Self.slowInterval
         if wanted != mouseInterval { scheduleMouseTimer(wanted) }
+    }
+
+    // MARK: Beside the open notch
+
+    /// Shows, moves or hides the panel beside one screen's notch. Runs with the cursor checks, so it
+    /// follows the notch opening and closing without a timer of its own.
+    private func updateBeside(_ screen: Screen) {
+        guard let beside, screen.model.isExpanded, beside.isWanted() else {
+            if screen.beside?.isVisible == true { screen.beside?.orderOut(nil) }
+            screen.model.besideRect = nil
+            return
+        }
+        let geometry = screen.model.geometry
+        let panelRect = geometry.hitRect(expanded: true)
+        let top = geometry.screenFrame.maxY - geometry.notchHeight - 6
+        let maxHeight = geometry.expandedSize.height + 140
+        let height = min(max(beside.contentHeight(), 120), maxHeight)
+        let frame = NotchGeometry.sideFrame(beside: panelRect, in: geometry.screenFrame,
+                                            size: CGSize(width: beside.width, height: height), top: top)
+        let panel = screen.beside ?? makeBeside(beside)
+        screen.beside = panel
+        if panel.frame != frame {
+            panel.setFrame(frame, display: true)
+            panel.invalidateShadow()
+        }
+        if !panel.isVisible { panel.orderFrontRegardless() }
+        screen.model.besideRect = frame
+    }
+
+    private func makeBeside(_ beside: NotchBeside) -> NotchPanel {
+        let panel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                               backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
+        panel.isMovable = false
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        let view = beside.makeView()
+        panel.contentView = view
+        return panel
     }
 }

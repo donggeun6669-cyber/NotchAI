@@ -24,6 +24,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Put the panel on screen before anything reads files: if a read waits on a macOS privacy
         // prompt, the notch is already there (and the prompt has an app with a window to show for).
         let controller = NotchWindowController(app: app)
+        // The 결재 panel beside the open notch (2026-11-01 5차).
+        let approvals = app.approvals
+        controller.beside = NotchBeside(
+            width: 280,
+            isWanted: { approvals.wantsPanel },
+            contentHeight: { approvals.contentHeight },
+            makeView: {
+                let hosting = NSHostingView(rootView: ApprovalSidePanel(approvals: approvals))
+                hosting.sizingOptions = []
+                return hosting
+            })
         // `open NotchAI.app --args -startExpanded YES` keeps the panel open (for screenshots / debugging).
         controller.show(startExpanded: UserDefaults.standard.bool(forKey: "startExpanded"))
         notchController = controller

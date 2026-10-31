@@ -27,14 +27,23 @@ struct CollapsedNotchView: View {
 
             HStack(spacing: 5) {
                 if agents { character(app.provider(.gpt)) }
-                if !narrow, mark.showsLevel {
+                if let pill = app.approvals.pill, !narrow {
+                    ApprovalPill(pill: pill) { app.approvals.open() }
+                } else if !narrow, mark.showsLevel {
                     LevelMeter(level: app.recorder.level)
                         .help("입력 레벨")
                 }
                 if let jarvis = JarvisOrbState(app.jarvis.connection) {
                     JarvisOrbView(state: jarvis, size: JarvisOrbLayout.collapsedSize)
                         .frame(width: JarvisOrbLayout.collapsedSize, height: JarvisOrbLayout.collapsedSize)
-                        .help("Jarvis: \(JarvisOrbLayout.word(jarvis))")
+                        .overlay(alignment: .topTrailing) {
+                            // Something waits for a decision: the one red mark beside the notch.
+                            if (app.jarvis.presence?.approvals ?? 0) > 0 {
+                                Circle().fill(StudioTheme.red).frame(width: 5, height: 5).offset(x: 2, y: -2)
+                            }
+                        }
+                        .help("Jarvis: \(JarvisOrbLayout.word(jarvis))"
+                              + ((app.jarvis.presence?.approvals ?? 0) > 0 ? " · 결재 \(app.jarvis.presence?.approvals ?? 0)건" : ""))
                 }
             }
             .frame(width: wingWidth)
@@ -47,6 +56,26 @@ struct CollapsedNotchView: View {
         AICharacterView(kind: provider.kind, state: provider.displayState, size: 16)
             .frame(width: 16, height: 16)
             .help("\(provider.name): \(provider.displayState.label)")
+    }
+}
+
+/// 「결재 1건 · 코드 ›」 beside the notch for a while when a new item arrives (2026-11-01 5차). The
+/// wing widens for it like for a recording's clock; a click opens the notch with the 결재 panel.
+struct ApprovalPill: View {
+    let pill: JarvisApprovals.Pill
+    let open: () -> Void
+
+    var body: some View {
+        Text("결재 \(pill.count)건 · \(pill.kind) ›")
+            .font(StudioTheme.font(10.5, .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 8)
+            .frame(height: 18)
+            .background(Capsule().fill(Color(hex: 0x34363A)))
+            .onTapGesture(perform: open)
+            .help("눌러서 결재 패널 열기")
     }
 }
 
@@ -225,7 +254,6 @@ enum JarvisOrbLayout {
         case .idle: "쉬는 중"
         case .thinking: "생각 중"
         case .working(let jobs): "작업 중 \(jobs)"
-        case .needsApproval: "승인 대기"
         case .listening: "듣는 중"
         case .speaking: "말하는 중"
         case .unknown: "알 수 없는 상태"

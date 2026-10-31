@@ -68,7 +68,8 @@ struct JarvisParsingTests {
     @Test func approvalsOutrankTheState() throws {
         let presence = try #require(JarvisPresence.parse(presence: Data(#"{"state":"working","running_jobs":1,"approvals":1}"#.utf8)))
         #expect(presence.shownState == .needsApproval)
-        #expect(JarvisOrbState(.online(presence)) == .needsApproval)
+        // The light keeps saying what Jarvis does; the waiting 결재 is a red dot beside it (5차).
+        #expect(JarvisOrbState(.online(presence)) == .working(jobs: 1))
     }
 
     @Test func healthBecomesAPresence() throws {

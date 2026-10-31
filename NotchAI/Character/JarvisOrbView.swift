@@ -13,8 +13,6 @@ enum JarvisOrbState: Equatable {
     case thinking
     /// Satellites circle the light, one per running job (up to `maxSatellites`).
     case working(jobs: Int)
-    /// Yellow with "!", like the agents' approval face.
-    case needsApproval
     case listening
     case speaking
     /// A state this build does not know: a plain, still light.
@@ -29,11 +27,12 @@ enum JarvisOrbState: Equatable {
         case .checking: self = .checking
         case .offline: self = .offline
         case .online(let presence):
-            switch presence.shownState {
-            case .idle: self = .idle
+            // A waiting 결재 is shown as a small red dot beside the light (CollapsedNotchView), not as a
+            // state of its own (2026-11-01 5차): the light keeps saying what Jarvis is doing.
+            switch presence.state {
+            case .idle, .needsApproval: self = .idle
             case .thinking: self = .thinking
             case .working: self = .working(jobs: min(max(presence.runningJobs, 1), Self.maxSatellites))
-            case .needsApproval: self = .needsApproval
             case .listening: self = .listening
             case .speaking: self = .speaking
             case .unknown: self = .unknown
@@ -87,8 +86,6 @@ final class JarvisOrbLayerView: NSView {
         configure(state: current.state, size: current.size)
     }
 
-    private var scale: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
-
     func configure(state: JarvisOrbState, size: CGFloat) {
         if let current, current.state == state, current.size == size { return }
         current = (state, size)
@@ -102,7 +99,6 @@ final class JarvisOrbLayerView: NSView {
         stage.frame = CGRect(x: 0, y: 0, width: s, height: s)
         let animate = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let blue = JarvisOrbView.nsBlue
-        let yellow = CharacterState.attentionYellow
 
         switch state {
         case .checking:
@@ -119,14 +115,6 @@ final class JarvisOrbLayerView: NSView {
             stage.addSublayer(glow(size: s, color: blue, range: 0.5...0.9, period: 0.9, animate: animate))
             stage.addSublayer(core(size: s, diameter: s * 0.5, color: blue, pulse: animate ? (0.9, 0.06) : nil))
             stage.addSublayer(satellites(count: jobs, size: s, color: blue, animate: animate))
-        case .needsApproval:
-            stage.addSublayer(glow(size: s, color: yellow, range: 0.4...0.9, period: 1.2, animate: animate))
-            let dot = core(size: s, diameter: s * 0.92, color: yellow, pulse: animate ? (1.2, 0.08) : nil)
-            let mark = textLayer("!", size: s * 0.74)
-            mark.frame = CGRect(x: 0, y: (dot.bounds.height - s * 0.74 * 1.25) / 2,
-                                width: dot.bounds.width, height: s * 0.74 * 1.25)
-            dot.addSublayer(mark)
-            stage.addSublayer(dot)
         case .listening:
             stage.addSublayer(glow(size: s, color: blue, range: 0.45...0.8, period: 1.4, animate: animate))
             if animate { stage.addSublayer(ripple(size: s, color: blue)) }
@@ -245,16 +233,5 @@ final class JarvisOrbLayerView: NSView {
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         ring.add(group, forKey: "ripple")
         return ring
-    }
-
-    private func textLayer(_ string: String, size: CGFloat) -> CATextLayer {
-        let base = NSFont.systemFont(ofSize: size, weight: .heavy)
-        let font = NSFont(descriptor: base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor, size: size) ?? base
-        let layer = CATextLayer()
-        layer.string = NSAttributedString(string: string, attributes: [
-            .font: font, .foregroundColor: NSColor.black.withAlphaComponent(0.85)])
-        layer.alignmentMode = .center
-        layer.contentsScale = scale
-        return layer
     }
 }

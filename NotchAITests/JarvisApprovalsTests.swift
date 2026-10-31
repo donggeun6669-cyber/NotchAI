@@ -64,8 +64,9 @@ struct JarvisApprovalParsingTests {
         #expect(code.files == ["A\tprobe_inside.txt"])
         #expect(code.diff?.contains("+inside") == true)
         #expect(code.tests.isEmpty)
-        #expect(item.approveConsequence.contains("demo의 main"))
-        #expect(item.approveConsequence.contains("push는 하지 않습니다"))
+        #expect(item.consequence == "demo main에 합쳐요 · push 안 함")
+        #expect(item.teamWord == "개발팀" && item.evidence == "파일 1개 · 테스트 기록 없음")
+        #expect(item.needsHold && item.shortKind == "코드")
     }
 
     @Test func aMailDraftWithFieldsThisBuildDoesNotKnow() throws {
@@ -74,7 +75,8 @@ struct JarvisApprovalParsingTests {
         #expect(item.kindWord == "메일 초안")
         #expect(mail.to == ["prof@example.ac.kr"] && mail.subject == "발표 자료 보내드립니다")
         #expect(mail.location == "Gmail 임시보관함" && mail.viewURL != nil)
-        #expect(item.approveConsequence.contains("보내지 않습니다"))
+        #expect(item.consequence == "받는 사람 prof@example.ac.kr · 보내기는 Gmail에서 직접")
+        #expect(!item.needsHold && item.teamWord == "비서실" && item.shortKind == "메일")
     }
 
     @Test func outcomesAreSaidAsTheServerSaidThem() throws {
@@ -98,71 +100,157 @@ struct JarvisApprovalParsingTests {
 
 @MainActor
 struct JarvisApprovalFlowTests {
+    private let codeID = "a20261101-034536-19d469"
+
     private func make(_ server: FakeApprovals) -> JarvisApprovals {
-        JarvisApprovals(jarvis: JarvisService(transport: server, address: base))
+        let approvals = JarvisApprovals(jarvis: JarvisService(transport: server, address: base))
+        approvals.undoDelay = .milliseconds(150)
+        return approvals
     }
 
-    @Test func approvingShowsWhatTheServerDid() async throws {
-        let id = "a20261101-034536-19d469"
-        let server = FakeApprovals(["GET /approvals/\(id)": (200, codeItem)])
-        await server.set("POST /approvals/\(id)/approve", 200, decided(codeItem, status: "applied", word: "반영됨",
+    private func pause(_ ms: Int = 350) async { try? await Task.sleep(for: .milliseconds(ms)) }
+
+    @Test func holdToApproveShowsWhatTheServerDid() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(codeItem)]")])
+        await server.set("POST /approvals/\(codeID)/approve", 200, decided(codeItem, status: "applied", word: "반영됨",
                          outcome: #"{"merged":true,"method":"fast-forward","push":"원격 저장소가 없어 push 하지 않았어요."}"#))
         let approvals = make(server)
-        await approvals.show(id)
-        #expect(approvals.selected?.code?.diff != nil)
-
-        approvals.note = "  시험이라 괜찮음 "
-        approvals.ask(.approve, now: Date(timeIntervalSinceNow: -5))
-        #expect(approvals.step == .confirming(.approve))
-        await approvals.send(.approve, item: id, note: "시험이라 괜찮음")
-        #expect(approvals.selected?.statusWord == "반영됨")
-        #expect(approvals.selected?.outcome.first == "합쳤습니다 (fast-forward)")
-        #expect(approvals.step == .reading)
-        #expect(await server.bodies["POST /approvals/\(id)/approve"] == #"{"note":"시험이라 괜찮음"}"#)
+        await approvals.refresh()
+        approvals.notes[codeID] = "  시험이라 괜찮음 "
+        await approvals.approve(codeID)
+        #expect(approvals.results[codeID]?.statusWord == "반영됨")
+        #expect(approvals.results[codeID]?.outcome.first == "합쳤습니다 (fast-forward)")
+        #expect(await server.bodies["POST /approvals/\(codeID)/approve"] == #"{"note":"시험이라 괜찮음"}"#)
+        #expect(approvals.cards.first?.id == codeID)   // the card stays, with its result
+        approvals.closeResult(codeID)
+        #expect(approvals.results.isEmpty)
     }
 
-    @Test func oneTapNeverDecides() async {
-        let server = FakeApprovals(["GET /approvals/m1": (200, mailItem)])
+    @Test func rejectHidesAtOnceAndUndoSendsNothing() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(mailItem)]")])
         let approvals = make(server)
-        await approvals.show("m1")
-        approvals.ask(.approve)
-        approvals.confirm()   // the same click arriving again
-        #expect(approvals.step == .confirming(.approve))
-        try? await Task.sleep(for: .milliseconds(100))
-        #expect(await !server.asked.contains("POST /approvals/m1/approve"))
-        approvals.cancel()
-        #expect(approvals.step == .reading)
+        await approvals.refresh()
+        approvals.reject("m1")
+        #expect(approvals.cards.isEmpty)
+        #expect(approvals.pendingRejects.map(\.id) == ["m1"])
+        approvals.undoReject("m1")
+        #expect(approvals.cards.map(\.id) == ["m1"])
+        await pause()
+        #expect(await !server.asked.contains("POST /approvals/m1/reject"))
+    }
+
+    @Test func rejectIsSentWhenTheCountEnds() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(mailItem)]")])
+        await server.set("POST /approvals/m1/reject", 200, mailItem.replacingOccurrences(
+            of: #""status":"pending""#, with: #""status":"rejected","outcome":{"message":"반려 기록만 했어요."}"#))
+        let approvals = make(server)
+        await approvals.refresh()
+        approvals.reject("m1")
+        #expect(await !server.asked.contains("POST /approvals/m1/reject"))
+        await pause()
+        #expect(await server.asked.contains("POST /approvals/m1/reject"))
+        #expect(approvals.rejectNotice == "반려됐어요 · 반려 기록만 했어요.")
+        #expect(approvals.pendingRejects.isEmpty)
+    }
+
+    /// The app quits inside the five seconds: nothing was sent, the item stays waiting.
+    @Test func quittingBeforeTheCountEndsSendsNothing() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(mailItem)]")])
+        var approvals: JarvisApprovals? = make(server)
+        await approvals?.refresh()
+        approvals?.reject("m1")
+        approvals = nil
+        await pause()
+        #expect(await !server.asked.contains("POST /approvals/m1/reject"))
     }
 
     @Test func alreadyDecidedShowsTheRealState() async {
-        let server = FakeApprovals(["GET /approvals/m1": (200, mailItem)])
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(mailItem)]"),
+                                    "POST /approvals/m1/approve": (409, #"{"detail":"이미 처리된 항목이에요 (반려)"}"#),
+                                    "GET /approvals/m1": (200, decided(mailItem, status: "rejected", word: "반려",
+                                                                      outcome: #"{"message":"반려 기록만 했어요."}"#))])
         let approvals = make(server)
-        await approvals.show("m1")
-        await server.set("POST /approvals/m1/reject", 409, #"{"detail":"이미 처리된 항목이에요 (확인함)"}"#)
-        await server.set("GET /approvals/m1", 200, decided(mailItem, status: "approved", word: "확인함",
-                         outcome: #"{"message":"확인함으로 기록했어요."}"#).replacingOccurrences(of: "\"future_field\"", with: "\"f\""))
-        await approvals.send(.reject, item: "m1", note: nil)
-        #expect(approvals.problem == "이미 처리된 항목이에요 (확인함)")
-        #expect(approvals.selected?.statusWord == "확인함")
+        await approvals.refresh()
+        await approvals.approve("m1")
+        #expect(approvals.problems["m1"] == "이미 처리된 항목이에요 (반려)")
+        #expect(approvals.results["m1"]?.statusWord == "반려")
     }
 
     @Test func noAnswerIsNeverTakenForSuccess() async {
-        let server = FakeApprovals(["GET /approvals/m1": (200, mailItem)])
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(mailItem)]"),
+                                    "GET /approvals/m1": (200, mailItem)])
         await server.fail("POST /approvals/m1/approve")
         let approvals = make(server)
-        await approvals.show("m1")
-        await approvals.send(.approve, item: "m1", note: nil)
-        #expect(approvals.problem?.hasPrefix("결과를 받지 못했습니다") == true)
-        #expect(approvals.selected?.isPending == true)   // re-read from the server: still waiting
+        await approvals.refresh()
+        await approvals.approve("m1")
+        #expect(approvals.problems["m1"]?.hasPrefix("결과를 받지 못했어요") == true)
+        #expect(approvals.results["m1"] == nil)            // still pending on the server
+        #expect(approvals.cards.map(\.id) == ["m1"])
     }
 
-    @Test func theListIsOnlyWhatIsPending() async {
+    @Test func thePanelIsUpOnlyWithSomethingInIt() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[]")])
+        let approvals = make(server)
+        await approvals.refresh()
+        #expect(!approvals.wantsPanel)
+        approvals.open()
+        await pause(100)
+        #expect(!approvals.wantsPanel)   // nothing pending: never up on its own
+
+        await server.set("GET /approvals?status=pending", 200, "[\(mailItem)]")
+        await approvals.refresh()
+        #expect(approvals.wantsPanel)
+        approvals.dismiss()
+        #expect(!approvals.wantsPanel)   // ✕: away …
+
+        await server.set("GET /approvals?status=pending", 200, "[\(codeItem),\(mailItem)]")
+        await approvals.refresh(announcing: true)
+        #expect(approvals.wantsPanel)    // … until a new one arrives
+        #expect(approvals.pill == JarvisApprovals.Pill(count: 2, kind: "코드"))
+    }
+
+    @Test func theFirstReadAnnouncesNothing() async {
         let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(mailItem)]")])
         let approvals = make(server)
-        approvals.open()
-        try? await Task.sleep(for: .milliseconds(100))
-        #expect(approvals.isOpen && approvals.items.map(\.id) == ["m1"])
-        approvals.close()
-        #expect(!approvals.isOpen && approvals.selected == nil)
+        await approvals.refresh(announcing: true)
+        #expect(approvals.pill == nil)   // already waiting when the app started: the red dot says it
+    }
+
+    @Test func thePillGoesAwayByItself() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[]")])
+        let approvals = make(server)
+        approvals.pillDuration = .milliseconds(100)
+        await approvals.refresh()
+        await server.set("GET /approvals?status=pending", 200, "[\(mailItem)]")
+        await approvals.refresh(announcing: true)
+        #expect(approvals.pill != nil)
+        await pause(300)
+        #expect(approvals.pill == nil)
+    }
+}
+
+struct SideFrameTests {
+    private let builtIn = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    private let size = CGSize(width: 280, height: 300)
+
+    @Test func rightOfTheNotchOnTheBuiltInScreen() {
+        let panel = CGRect(x: 406, y: 982 - 424, width: 700, height: 424)
+        let frame = NotchGeometry.sideFrame(beside: panel, in: builtIn, size: size, top: 944)
+        #expect(frame == CGRect(x: 1116, y: 644, width: 280, height: 300))
+    }
+
+    @Test func leftWhenTheRightHasNoRoom() {
+        let screen = CGRect(x: 0, y: 0, width: 1300, height: 900)
+        let panel = CGRect(x: 520, y: 476, width: 700, height: 424)
+        let frame = NotchGeometry.sideFrame(beside: panel, in: screen, size: size, top: 870)
+        #expect(frame.maxX == 510)
+    }
+
+    @Test func underThePanelOnAPortraitScreen() {
+        let portrait = CGRect(x: 1512, y: -500, width: 1080, height: 1920)
+        let panel = CGRect(x: 1702, y: 1420 - 424, width: 700, height: 424)
+        let frame = NotchGeometry.sideFrame(beside: panel, in: portrait, size: size, top: 1390)
+        #expect(frame.maxY == panel.minY - 10)
+        #expect(frame.minX >= portrait.minX && frame.maxX <= portrait.maxX)
     }
 }
