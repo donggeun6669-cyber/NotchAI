@@ -189,25 +189,27 @@ struct JarvisApprovalFlowTests {
         #expect(approvals.cards.map(\.id) == ["m1"])
     }
 
-    @Test func thePanelIsUpOnlyWithSomethingInIt() async {
+    /// 「보기를 눌러야 옆 패널에 뜨는걸로」 (6차): waiting items alone never bring the panel up.
+    @Test func thePanelIsUpOnlyAfterLooking() async {
         let server = FakeApprovals(["GET /approvals?status=pending": (200, "[]")])
         let approvals = make(server)
         await approvals.refresh()
-        #expect(!approvals.wantsPanel)
         approvals.open()
         await pause(100)
-        #expect(!approvals.wantsPanel)   // nothing pending: never up on its own
+        #expect(!approvals.wantsPanel)   // nothing waiting: never an empty panel
 
         await server.set("GET /approvals?status=pending", 200, "[\(mailItem)]")
-        await approvals.refresh()
-        #expect(approvals.wantsPanel)
         approvals.dismiss()
-        #expect(!approvals.wantsPanel)   // ✕: away …
-
-        await server.set("GET /approvals?status=pending", 200, "[\(codeItem),\(mailItem)]")
         await approvals.refresh(announcing: true)
-        #expect(approvals.wantsPanel)    // … until a new one arrives
-        #expect(approvals.pill == JarvisApprovals.Pill(count: 2, kind: "코드"))
+        #expect(!approvals.wantsPanel)   // something waits, but 「보기」 was not pressed
+        #expect(approvals.pill == JarvisApprovals.Pill(count: 1, kind: "메일"))
+
+        approvals.open()
+        await pause(100)
+        #expect(approvals.wantsPanel)
+        #expect(approvals.pill == nil)   // looked at: the pill has done its job
+        approvals.dismiss()              // ✕ or the notch closing
+        #expect(!approvals.wantsPanel)
     }
 
     @Test func theFirstReadAnnouncesNothing() async {

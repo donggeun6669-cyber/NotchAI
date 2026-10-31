@@ -52,7 +52,8 @@ struct NotchView: View {
             Button("Quit NotchAI") { NSApp.terminate(nil) }
         }
         .onChange(of: model.isExpanded) { _, open in
-            guard open else { return }
+            // The 결재 panel closes with the notch; it opens again only with 「보기」.
+            guard open else { app.approvals.dismiss(); return }
             // The job list and the conversation should be fresh when they are seen.
             app.jarvis.wantJobs()
             Task { await app.chat.open() }

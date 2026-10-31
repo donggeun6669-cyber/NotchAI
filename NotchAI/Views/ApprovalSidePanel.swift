@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// Colours and type for 동근님's own screens (2026-11-01, Jarvis DECISIONS 「색은 배경화면, 글씨는
-/// Pretendard, 구성은 토스처럼」): the light grey studio, the black slab and the red ribbon of his
-/// wallpaper. Red is only for the one primary button on a card and the waiting dot — never for errors.
+/// Colours and type for the 결재 panel. 동근님's design rule (2026-11-01, Jarvis DECISIONS 「색은
+/// 배경화면, 글씨는 Pretendard, 구성은 토스처럼」) inside the notch's own rule (NotchAI DECISIONS
+/// 2026-09-19 · 2026-09-21: the notch is a black shape that grows; Ribbon Studio palette): a panel
+/// beside the notch is the notch's black in any system appearance, with graphite cards and the
+/// ribbon red only for the one primary button and the waiting dot — never for errors (6차).
 enum StudioTheme {
     struct Palette {
         var background: Color
@@ -21,16 +23,15 @@ enum StudioTheme {
     static let undo = Color(hex: 0xFF8A8C)
     static let success = Color(hex: 0x2E9E5B)
     static let nsRed = NSColor(srgbRed: 0xE5 / 255, green: 0x3D / 255, blue: 0x40 / 255, alpha: 1)
+    /// The expanded notch's lower corners (NotchView), so the panel reads as the same black shape.
+    static let notchCorner: CGFloat = 22
 
-    static func palette(_ scheme: ColorScheme) -> Palette {
-        scheme == .dark
-            ? Palette(background: Color(hex: 0x1C1D1F), card: Color(hex: 0x27282A), text: Color(hex: 0xF2F3F5),
-                      secondary: Color(hex: 0xA9ACB2), muted: Color(hex: 0x8A8D93),
-                      greyButton: Color(hex: 0x34363A), greyButtonText: Color(hex: 0xD5D7DB))
-            : Palette(background: Color(hex: 0xF2F3F5), card: .white, text: Color(hex: 0x27282A),
-                      secondary: Color(hex: 0x4E5056), muted: Color(hex: 0x6B6E75),
-                      greyButton: Color(hex: 0xF2F3F5), greyButtonText: Color(hex: 0x4E5056))
-    }
+    /// The notch's black and graphite, whatever the system appearance.
+    static let notch = Palette(background: .black, card: Color(hex: 0x1C1D1F), text: Color(hex: 0xF2F3F5),
+                               secondary: Color(hex: 0x9A9DA4), muted: Color(hex: 0x7E8188),
+                               greyButton: Color(hex: 0x27282A), greyButtonText: Color(hex: 0xD5D7DB))
+
+    static func palette(_ scheme: ColorScheme) -> Palette { notch }
 
     /// Pretendard (installed in ~/Library/Fonts); the system font where it is missing.
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
@@ -81,7 +82,8 @@ struct ApprovalSidePanel: View {
             }
         }
         .frame(width: Self.width)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(palette.background))
+        .background(RoundedRectangle(cornerRadius: StudioTheme.notchCorner, style: .continuous).fill(palette.background))
+        .environment(\.colorScheme, .dark)
     }
 
     private var content: some View {
@@ -381,7 +383,6 @@ private struct UndoBar: View {
 private struct DiffView: View {
     let code: JarvisApproval.CodeChange
     @State private var showsAll = false
-    @Environment(\.colorScheme) private var scheme
     static let firstLines = 40
 
     var body: some View {
@@ -408,9 +409,9 @@ private struct DiffView: View {
                 .textSelection(.enabled)
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // The black slab of the wallpaper; a shade deeper than a dark card so it still stands out.
+                // A shade deeper than the graphite card, so the lines stand apart from it.
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(hex: scheme == .dark ? 0x141517 : 0x27282A)))
+                    .fill(Color(hex: 0x0E0F10)))
                 if lines.count > Self.firstLines {
                     Button(showsAll ? "접기" : "더 보기 (\(lines.count - Self.firstLines)줄)") { showsAll.toggle() }
                         .buttonStyle(.plain)

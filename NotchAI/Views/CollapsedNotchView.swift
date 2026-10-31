@@ -59,14 +59,15 @@ struct CollapsedNotchView: View {
     }
 }
 
-/// 「결재 1건 · 코드 ›」 beside the notch for a while when a new item arrives (2026-11-01 5차). The
-/// wing widens for it like for a recording's clock; a click opens the notch with the 결재 panel.
+/// 「결재 1건 · 보기 ›」 beside the notch for a while when a new item arrives (2026-11-01 5차 · 6차).
+/// The wing widens for it like for a recording's clock; hovering opens the notch as always, and a
+/// click on the pill opens the 결재 panel beside it.
 struct ApprovalPill: View {
     let pill: JarvisApprovals.Pill
     let open: () -> Void
 
     var body: some View {
-        Text("결재 \(pill.count)건 · \(pill.kind) ›")
+        Text("결재 \(pill.count)건 · 보기 ›")
             .font(StudioTheme.font(10.5, .semibold))
             .foregroundStyle(.white)
             .lineLimit(1)

@@ -67,13 +67,14 @@ struct JarvisSnapshots {
         approvals.undoDelay = .seconds(60)
         await approvals.refresh()
         await approvals.loadDetail("c1")
+        approvals.open()
         func size() -> CGSize {
             let measure = NSHostingView(rootView: ApprovalSidePanel(approvals: approvals, scrolls: false))
             measure.layoutSubtreeIfNeeded()
             return measure.fittingSize
         }
 
-        for dark in [false, true] {
+        for dark in [false, true] {   // the panel is the notch's black in both
             let tag = dark ? "dark" : "light"
             try await shoot(ApprovalSidePanel(approvals: approvals), "1-cards-\(tag)", size: size(), dark: dark, in: folder)
             approvals.toggleDiff("c1")

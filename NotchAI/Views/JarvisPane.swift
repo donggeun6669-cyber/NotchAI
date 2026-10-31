@@ -135,7 +135,7 @@ struct JarvisPane: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "exclamationmark.circle.fill")
-                            Text("결재 \(presence.approvals)건 — 옆 패널에서 보기")
+                            Text("결재 \(presence.approvals)건 · 보기")
                             Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
                         }
                         .font(.system(size: 10.5, weight: .semibold))

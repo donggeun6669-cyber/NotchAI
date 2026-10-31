@@ -219,9 +219,7 @@ final class JarvisApprovals {
     @ObservationIgnored var pillDuration: Duration = .seconds(10)
 
     @ObservationIgnored private let jarvis: JarvisService
-    @ObservationIgnored private var dismissedIDs: Set<String> = []
     @ObservationIgnored private var knownIDs: Set<String>?
-    @ObservationIgnored private var forcedOpen = false
     @ObservationIgnored private var pillTask: Task<Void, Never>?
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
 
@@ -240,26 +238,30 @@ final class JarvisApprovals {
 
     var waitingCount: Int { items.filter { results[$0.id] == nil }.count - pendingRejects.count }
 
-    /// The panel beside the open notch should be up: something waits that has not been dismissed,
-    /// a decision is showing its result, or a 반려 can still be undone. Never with nothing in it.
+    /// The panel beside the open notch should be up. Only after 「보기」 (6차, 동근님 「보기를 눌러야
+    /// 옆 패널에 뜨는걸로」) — the notch opening never brings it up by itself; waiting items are
+    /// said by the red dot and the pill. Never with nothing in it.
     var wantsPanel: Bool {
-        if !pendingRejects.isEmpty || rejectNotice != nil || !results.isEmpty { return true }
-        guard !cards.isEmpty else { return false }
-        return forcedOpen || items.contains { !dismissedIDs.contains($0.id) }
+        guard isOpen else { return false }
+        return !cards.isEmpty || !pendingRejects.isEmpty || rejectNotice != nil
     }
 
-    /// The yellow line, or the pill: show the panel even if it was dismissed.
+    /// 「보기」 was pressed and the panel has not been closed since.
+    private(set) var isOpen = false
+
+    /// 「보기」 on the yellow line or the pill.
     func open() {
-        forcedOpen = true
+        isOpen = true
+        hidePill()
         Task { await refresh() }
     }
 
-    /// ✕: away until a new item arrives. Results already read are closed with it.
+    /// ✕, or the notch closing: the panel goes until 「보기」 again. Results already read go with it;
+    /// a 반려 still counting down is sent (or undone) all the same.
     func dismiss() {
-        dismissedIDs = Set(items.map(\.id))
+        isOpen = false
         results.removeAll()
         problems.removeAll()
-        forcedOpen = false
     }
 
     /// A decided card's 「닫기」.
@@ -288,7 +290,6 @@ final class JarvisApprovals {
             showPill(Pill(count: list.count, kind: first.shortKind))
         }
         knownIDs = (knownIDs ?? []).union(ids)
-        if list.isEmpty && results.isEmpty { forcedOpen = false }
     }
 
     /// 「바뀐 줄 보기」: opens the lines in the card, reading them the first time.
