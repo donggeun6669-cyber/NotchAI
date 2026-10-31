@@ -18,6 +18,8 @@ final class MediaRemoteService {
     private var process: StreamingProcess?
     private var state: [String: Any] = [:]
     private var restarts = 0
+    /// Stopped on purpose (quitting, or music switched off in the notch): do not restart.
+    private var stopped = false
 
     private static let perl = URL(fileURLWithPath: "/usr/bin/perl")
 
@@ -37,6 +39,8 @@ final class MediaRemoteService {
 
     /// Runs the adapter's self-test, then starts streaming. Calls back with `false` if unusable.
     func start(onUnavailable: @escaping () -> Void) {
+        stopped = false
+        restarts = 0
         Self.killOrphanedStreams()
         guard let test = Self.arguments(["test"], includeTestClient: true) else {
             onUnavailable()
@@ -44,6 +48,7 @@ final class MediaRemoteService {
         }
         Task {
             let ok = await Self.exitsCleanly(test)
+            guard !stopped else { return }
             guard ok else {
                 onUnavailable()
                 return
@@ -62,6 +67,7 @@ final class MediaRemoteService {
         process.onExit = { [weak self] _, _ in
             guard let self else { return }
             self.process = nil
+            guard !self.stopped else { return }
             // Restart a few times (e.g. after sleep); after that give up on this launch.
             self.restarts += 1
             if self.restarts <= 3 {
@@ -77,8 +83,10 @@ final class MediaRemoteService {
     }
 
     func stop() {
-        restarts = .max   // do not restart after this
+        stopped = true   // do not restart after this
         process?.terminate()
+        process = nil
+        isAvailable = false
     }
 
     /// If NotchAI was killed (not quit), its `perl … stream` child keeps running with launchd as

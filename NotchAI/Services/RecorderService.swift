@@ -175,6 +175,11 @@ final class RecorderService: NSObject {
     }
 
     var isRunning: Bool { phase == .checkingInput || phase == .recording }
+    /// The last attempt went wrong (the input check heard nothing, the file failed its check,
+    /// permission was refused) and nobody has dismissed it yet. Twice the first attempt of a
+    /// lecture failed its 3-second check while 동근님 believed it was recording (2026-10-03,
+    /// 2026-10-07), so this stays up until it is seen and dismissed, or the next start.
+    var needsAttention: Bool { phase == .idle && (trouble != nil || silenceAlarm) }
     var isBusy: Bool { phase != .idle }
     var isLoopbackMissing: Bool {
         mode.usesLoopback && macSound == .loopbackDriver && AudioDevices.loopback() == nil
@@ -270,6 +275,13 @@ final class RecorderService: NSObject {
     // MARK: - Start and stop
 
     private var usesSystemTap: Bool { macSound == .systemTap && mode.usesLoopback }
+
+    /// "알겠어요" on a failure: it has been seen.
+    func dismissTrouble() {
+        guard phase == .idle else { return }
+        trouble = nil
+        silenceAlarm = false
+    }
 
     func toggle() {
         if isRunning { stop() } else if !isBusy { start() }

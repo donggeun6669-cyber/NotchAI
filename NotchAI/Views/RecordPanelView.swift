@@ -7,12 +7,16 @@ import SwiftUI
 struct RecordPanel: View {
     let recorder: RecorderService
     let accent: Color
+    /// Bigger buttons and type: NotchAI's panel is the recorder first (2026-11-01).
+    var large = false
+    /// Something for the header's right end beside the folder button (NotchAI's `…` menu).
+    var accessory: AnyView?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Text("녹음")
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: large ? 13 : 11.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
                 if recorder.isRunning {
                     Circle().fill(NotchPalette.red).frame(width: 6, height: 6)
@@ -29,6 +33,7 @@ struct RecordPanel: View {
                 }
                 .buttonStyle(.plain)
                 .help("녹음 파일이 저장되는 폴더를 엽니다")
+                if let accessory { accessory }
             }
 
             modeGrid
@@ -66,21 +71,21 @@ struct RecordPanel: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: mode.symbol)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: large ? 13 : 11, weight: .medium))
                             .foregroundStyle(selected ? accent : .white.opacity(0.45))
                             .frame(width: 16)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(Self.shortLabel(mode))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .font(.system(size: large ? 12.5 : 11, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.white.opacity(selected ? 0.96 : 0.68))
                             Text(mode == .classroom ? "주변 소리" : "맥 소리")
-                                .font(.system(size: 8.5))
+                                .font(.system(size: large ? 9.5 : 8.5))
                                 .foregroundStyle(.white.opacity(selected ? 0.5 : 0.3))
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
+                    .padding(.vertical, large ? 7 : 5)
                     .background {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(.white.opacity(selected ? 0.11 : 0.045))
@@ -229,7 +234,14 @@ struct RecordPanel: View {
     @ViewBuilder
     private var idleControls: some View {
         VStack(alignment: .leading, spacing: 5) {
-            if let trouble = recorder.trouble ?? recorder.readinessTrouble {
+            if let trouble = recorder.trouble {
+                // A failed attempt: it stays (also beside the notch) until it is seen.
+                HStack(alignment: .top, spacing: 6) {
+                    warning(trouble.message)
+                    Spacer(minLength: 0)
+                    dismissButton
+                }
+            } else if let trouble = recorder.readinessTrouble {
                 warning(trouble.message)
             } else if let check = recorder.lastCheck {
                 resultBadge(check)
@@ -241,16 +253,25 @@ struct RecordPanel: View {
         }
     }
 
+    private var dismissButton: some View {
+        Button("알겠어요") { recorder.dismissTrouble() }
+            .buttonStyle(.plain)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.7))
+            .fixedSize()
+            .help("확인했습니다 · 노치 옆 경고를 내립니다")
+    }
+
     private var startButton: some View {
         Button { recorder.start() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "waveform.circle.fill")
                 Text("3초 확인 후 녹음")
             }
-            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+            .font(.system(size: large ? 13 : 11.5, weight: .semibold, design: .rounded))
             .foregroundStyle(.white.opacity(recorder.canStart ? 0.96 : 0.4))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
+            .padding(.vertical, large ? 10 : 7)
             .background(Capsule().fill(accent.opacity(recorder.canStart ? 0.82 : 0.24)))
             .contentShape(Capsule())
         }
@@ -265,6 +286,7 @@ struct RecordPanel: View {
                 .foregroundStyle(check.isClean ? .green.opacity(0.78) : accent)
                 .lineLimit(1)
             Spacer(minLength: 0)
+            if recorder.needsAttention { dismissButton }
             Text("\(RecorderService.clock(check.expectedSeconds)) · 파일 \(RecorderService.clock(check.fileSeconds))")
                 .font(.system(size: 8.5))
                 .foregroundStyle(.white.opacity(0.32))

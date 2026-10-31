@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Body of the expanded panel (2026-10-19), split left and right first:
-/// left — the calendar with today's list, and the desk (music, clipboard, shelf, timer) under it;
-/// right — the recorder, the sites worth one click, and Claude and GPT as two big characters.
+/// Body of the open panel (2026-11-01): the recorder first and big, then Jarvis. Everything else —
+/// the sites, Claude and GPT, and on the left the calendar and the desk (music, clipboard, shelf,
+/// timer) — appears only when switched on in the `…` menu; the panel is sized to what is on
+/// (`AppModel.layout`). 동근님: 「쓰는 건 녹음뿐」.
 struct ExpandedNotchView: View {
     @Bindable var app: AppModel
     let notch: NotchViewModel
@@ -13,47 +14,69 @@ struct ExpandedNotchView: View {
 
     /// The panel's own accent is the red from the wallpaper; the agent colours stay on the agents.
     private var accent: Color { NotchPalette.red }
-    /// The desk and the agent badges share this height, so the two bottom rows line up.
-    private static let bottomHeight: CGFloat = 58
+    private var features: NotchFeatures { app.features }
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            VStack(spacing: 8) {
-                CalendarPane(source: app.schedule, accent: accent)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                Divider().overlay(.white.opacity(0.1))
-                DeskView(app: app, accent: accent, onFocusChange: { notch.setKeepsOpen($0) })
-                    .frame(height: Self.bottomHeight)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if features.hasLeftColumn {
+                VStack(spacing: 8) {
+                    if features.isOn(.calendar) {
+                        CalendarPane(source: app.schedule, accent: accent)
+                            .frame(maxHeight: .infinity, alignment: .top)
+                    }
+                    if features.isOn(.calendar), !features.deskTabs.isEmpty {
+                        Divider().overlay(.white.opacity(0.1))
+                    }
+                    if !features.deskTabs.isEmpty {
+                        DeskView(app: app, accent: accent, onFocusChange: { notch.setKeepsOpen($0) },
+                                 tabs: features.deskTabs, showsMenu: false)
+                            .frame(height: AppModel.agentsHeight)
+                            .frame(maxHeight: features.isOn(.calendar) ? nil : .infinity, alignment: .top)
+                    }
+                }
+                .frame(width: AppModel.leftColumnWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
 
-            Divider().overlay(.white.opacity(0.1))
-
-            VStack(alignment: .leading, spacing: 8) {
-                RecordPanel(recorder: app.desk.recorder, accent: accent)
                 Divider().overlay(.white.opacity(0.1))
-                SitesPane(launcher: app.launcher)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                AgentBadges(providers: app.providers)
-                    .frame(height: Self.bottomHeight)
             }
-            .frame(width: 236)
+
+            VStack(alignment: .leading, spacing: AppModel.sectionSpacing) {
+                RecordPanel(recorder: app.recorder, accent: accent, large: true,
+                            accessory: AnyView(MoreMenu(app: app)))
+                    .frame(height: AppModel.recorderHeight, alignment: .top)
+                if features.isOn(.launcher) {
+                    Divider().overlay(.white.opacity(0.1))
+                    SitesPane(launcher: app.launcher)
+                        .frame(height: AppModel.launcherHeight, alignment: .top)
+                }
+                if app.jarvis.isEnabled {
+                    Divider().overlay(.white.opacity(0.1))
+                    JarvisSection(jarvis: app.jarvis)
+                }
+                if features.isOn(.agents) {
+                    Divider().overlay(.white.opacity(0.1))
+                    AgentBadges(providers: app.providers)
+                        .frame(height: AppModel.agentsHeight)
+                }
+            }
+            .frame(width: AppModel.mainColumnWidth)
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 18)
-        .padding(.top, 6)
-        .padding(.bottom, 12)
+        .padding(.horizontal, AppModel.panelPadding.horizontal)
+        .padding(.top, AppModel.panelPadding.top)
+        .padding(.bottom, AppModel.panelPadding.bottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
-            if isDropTarget {
+            if isDropTarget, features.isOn(.shelf) {
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(accent.opacity(0.8), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
                     .padding(6)
             }
         }
-        // Files dropped anywhere on the panel land on the shelf.
+        // Files dropped anywhere on the panel land on the shelf, when the shelf is on.
         .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+            guard features.isOn(.shelf) else { return false }   // the shelf is hidden
             Task { @MainActor in
                 var urls: [URL] = []
                 for item in providers {

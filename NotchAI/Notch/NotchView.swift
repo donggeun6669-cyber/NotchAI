@@ -32,10 +32,11 @@ struct NotchView: View {
                     radius: geometry.isIsland ? 12 : 14, y: geometry.isIsland ? 4 : 6)
 
             VStack(spacing: 0) {
-                CollapsedNotchView(left: app.provider(.claude), right: app.provider(.gpt),
-                                   track: app.desk.peekingTrack,
-                                   notchWidth: geometry.notchRect.width, height: geometry.notchHeight,
-                                   compact: compact, iconsOnly: model.isExpanded)
+                // The open panel keeps the same strip on top, so a running clock stays in place.
+                let narrow = model.isCompact()
+                CollapsedNotchView(app: app, notchWidth: geometry.notchRect.width, height: geometry.notchHeight,
+                                   wingWidth: narrow ? geometry.layout.narrowWing : geometry.layout.wideWing,
+                                   narrow: narrow)
                 if model.isExpanded {
                     ExpandedNotchView(app: app, notch: model)
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -49,6 +50,9 @@ struct NotchView: View {
         .onTapGesture { model.expand() }
         .contextMenu {
             Button("Quit NotchAI") { NSApp.terminate(nil) }
+        }
+        .onChange(of: model.isExpanded) { _, open in
+            if open { app.jarvis.wantJobs() }   // the job list should be fresh when it is seen
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: model.isExpanded)
         .animation(.spring(response: 0.4, dampingFraction: 0.9), value: compact)

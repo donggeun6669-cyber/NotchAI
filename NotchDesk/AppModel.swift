@@ -16,6 +16,11 @@ final class AppModel {
     /// asks this under NotchAI's name for it.
     var allIdle: Bool { !desk.recorder.isRunning }
 
+    /// The window controller asks these of each app: NotchDesk keeps the standard sizes and
+    /// the narrow wings it has had since 2026-10-19.
+    var notchLayout: NotchLayout { NotchLayout() }
+    var collapsedIsNarrow: Bool { true }
+
     @ObservationIgnored private var pollTimer: Timer?
 
     func start() {

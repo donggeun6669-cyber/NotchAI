@@ -1,5 +1,16 @@
 import AppKit
 
+/// How big the panel is beside and below the notch. Each app hands in its own: NotchDesk keeps
+/// these defaults; NotchAI sizes the open panel to the parts that are switched on (2026-11-01).
+struct NotchLayout: Equatable {
+    /// Each wing beside the notch when there is nothing to say.
+    var narrowWing: CGFloat = NotchGeometry.compactWingWidth
+    /// Each wing when there is (a recording clock, status words).
+    var wideWing: CGFloat = NotchGeometry.wingWidth
+    /// The open panel below the notch row.
+    var body = CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight)
+}
+
 /// Where the notch is on one screen, and how big the panel is in each state.
 /// Pure values (no NSScreen inside) so it can be unit-tested.
 struct NotchGeometry: Equatable {
@@ -23,6 +34,7 @@ struct NotchGeometry: Equatable {
     let notchRect: CGRect
     let hasPhysicalNotch: Bool
     let menuBarHeight: CGFloat
+    let layout: NotchLayout
 
     /// A screen with no notch gets an iPhone-style island: the same rounded shape, still hanging
     /// from the top edge (only the shape differs from the real notch, not the place).
@@ -32,9 +44,11 @@ struct NotchGeometry: Equatable {
          safeAreaTop: CGFloat,
          leftAuxiliaryWidth: CGFloat?,
          rightAuxiliaryWidth: CGFloat?,
-         menuBarHeight: CGFloat) {
+         menuBarHeight: CGFloat,
+         layout: NotchLayout = NotchLayout()) {
         self.screenFrame = screenFrame
         self.menuBarHeight = menuBarHeight
+        self.layout = layout
         if safeAreaTop > 0, let left = leftAuxiliaryWidth, let right = rightAuxiliaryWidth,
            screenFrame.width - left - right > 0 {
             // Only the widths are used, so this does not depend on which coordinate space
@@ -51,12 +65,13 @@ struct NotchGeometry: Equatable {
         }
     }
 
-    init(screen: NSScreen) {
+    init(screen: NSScreen, layout: NotchLayout = NotchLayout()) {
         self.init(screenFrame: screen.frame,
                   safeAreaTop: screen.safeAreaInsets.top,
                   leftAuxiliaryWidth: screen.auxiliaryTopLeftArea?.width,
                   rightAuxiliaryWidth: screen.auxiliaryTopRightArea?.width,
-                  menuBarHeight: screen.frame.maxY - screen.visibleFrame.maxY)
+                  menuBarHeight: screen.frame.maxY - screen.visibleFrame.maxY,
+                  layout: layout)
     }
 
     /// The built-in notched display if there is one, otherwise the main display.
@@ -67,19 +82,19 @@ struct NotchGeometry: Equatable {
     var notchHeight: CGFloat { hasPhysicalNotch ? notchRect.height : Self.islandHeight }
 
     var collapsedSize: CGSize {
-        CGSize(width: notchRect.width + Self.wingWidth * 2, height: notchHeight)
+        CGSize(width: notchRect.width + layout.wideWing * 2, height: notchHeight)
     }
 
     var compactCollapsedSize: CGSize {
-        CGSize(width: notchRect.width + Self.compactWingWidth * 2, height: notchHeight)
+        CGSize(width: notchRect.width + layout.narrowWing * 2, height: notchHeight)
     }
 
     var expandedSize: CGSize {
-        var width = max(Self.minExpandedWidth, collapsedSize.width)
+        var width = max(layout.body.width, collapsedSize.width)
         // A portrait display is narrower than the panel wants to be.
         let room = screenFrame.width - (Self.earRadius + Self.shadowPadding) * 2
         if screenFrame.width > 0, room > 0 { width = min(width, room) }
-        return CGSize(width: width, height: notchHeight + Self.expandedBodyHeight)
+        return CGSize(width: width, height: notchHeight + layout.body.height)
     }
 
     /// The borderless window is fixed at the expanded size; SwiftUI draws the current shape inside it.

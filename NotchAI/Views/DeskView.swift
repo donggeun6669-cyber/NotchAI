@@ -35,6 +35,10 @@ struct DeskView: View {
     let accent: Color
     /// The notch must stay open while a field down here has the keyboard.
     var onFocusChange: (Bool) -> Void = { _ in }
+    /// The tabs switched on (NotchAI hides the ones not in use, 2026-11-01).
+    var tabs: [Tab] = Tab.allCases
+    /// NotchAI keeps its `…` menu by the recorder instead.
+    var showsMenu = true
 
     private var desk: DeskModel { app.desk }
 
@@ -52,7 +56,7 @@ struct DeskView: View {
 
             VStack(alignment: .trailing, spacing: 5) {
                 HStack(spacing: 2) {
-                    ForEach(Tab.allCases) { tab in
+                    ForEach(tabs) { tab in
                         Button {
                             desk.tab = tab
                         } label: {
@@ -66,8 +70,10 @@ struct DeskView: View {
                         .buttonStyle(.plain)
                         .help(tab.help)
                     }
-                    MoreMenu(app: app)
-                        .padding(.leading, 2)
+                    if showsMenu {
+                        MoreMenu(app: app)
+                            .padding(.leading, 2)
+                    }
                 }
                 trailingControl
             }

@@ -44,6 +44,7 @@ final class NotchWindowController {
     private let app: AppModel
     private var screens: [Screen] = []
     private var mouseTimer: Timer?
+    private var mouseInterval: TimeInterval = 0
     private var observers: [NSObjectProtocol] = []
     private var startExpanded = false
 
@@ -56,9 +57,7 @@ final class NotchWindowController {
         rebuild()
 
         // Polling the cursor needs no Accessibility / Input Monitoring permission.
-        mouseTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.trackMouse() }
-        }
+        scheduleMouseTimer(Self.fastInterval)
         for name in [NSApplication.didChangeScreenParametersNotification, .notchScreensChanged] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.rebuild() }
@@ -79,7 +78,7 @@ final class NotchWindowController {
 
         for nsScreen in wanted {
             guard let id = Self.displayID(of: nsScreen) else { continue }
-            let geometry = NotchGeometry(screen: nsScreen)
+            let geometry = NotchGeometry(screen: nsScreen, layout: app.notchLayout)
             if let existing = screens.first(where: { $0.displayID == id }) {
                 guard geometry != existing.model.geometry else { continue }
                 existing.model.collapse()
@@ -116,10 +115,9 @@ final class NotchWindowController {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true    // clicks fall through until the mouse is over the panel
 
-        // Always just the two characters beside the notch (2026-10-19, 동근님: 「괜히 길어지면 불편」).
-        // The wings used to widen with a status word, an idle note or a new track whenever an agent
-        // worked; now the character's own motion and face say it, and the strip never changes width.
-        model.isCompact = { true }
+        // Narrow unless the app has something that needs words (2026-10-19, 동근님: 「괜히 길어지면
+        // 불편」): in NotchAI only a recording's clock or a failed recording (2026-11-01).
+        model.isCompact = { [app] in app.collapsedIsNarrow }
 
         let hosting = NSHostingView(rootView: NotchView(model: model, app: app))
         hosting.sizingOptions = []         // the window frame comes from NotchGeometry, not SwiftUI
@@ -141,14 +139,41 @@ final class NotchWindowController {
         return Screen(displayID: displayID, panel: panel, model: model)
     }
 
+    /// 20 times a second near the top of a screen or while a panel is open, 5 times elsewhere.
+    /// The cursor is far from every notch most of the time, and checking it 20 times a second
+    /// regardless was most of what the app cost when nothing happened (2026-11-01).
+    static let fastInterval: TimeInterval = 1.0 / 20.0
+    static let slowInterval: TimeInterval = 1.0 / 5.0
+    /// How far below the top edge counts as "on the way to the notch".
+    static let nearTop: CGFloat = 140
+
+    private func scheduleMouseTimer(_ interval: TimeInterval) {
+        mouseTimer?.invalidate()
+        mouseInterval = interval
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.trackMouse() }
+        }
+        timer.tolerance = interval * 0.2
+        mouseTimer = timer
+    }
+
     /// The cursor is on one screen at a time, so at most one panel reacts to it.
     private func trackMouse() {
         let location = NSEvent.mouseLocation
+        var near = false
         for screen in screens {
             let inside = screen.model.updateMouse(location)
             if screen.panel.ignoresMouseEvents == inside {
                 screen.panel.ignoresMouseEvents = !inside
             }
+            let frame = screen.model.geometry.screenFrame
+            if screen.model.isExpanded || screen.model.isHovering
+                || (frame.minX...frame.maxX).contains(location.x)
+                    && (frame.maxY - Self.nearTop...frame.maxY + 1).contains(location.y) {
+                near = true
+            }
         }
+        let wanted = near ? Self.fastInterval : Self.slowInterval
+        if wanted != mouseInterval { scheduleMouseTimer(wanted) }
     }
 }
