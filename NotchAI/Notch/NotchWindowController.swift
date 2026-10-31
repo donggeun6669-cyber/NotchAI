@@ -208,7 +208,7 @@ final class NotchWindowController {
         let panelRect = geometry.hitRect(expanded: true)
         let top = geometry.screenFrame.maxY - geometry.notchHeight - 6
         let maxHeight = geometry.expandedSize.height + 140
-        let height = min(max(beside.contentHeight(), 120), maxHeight)
+        let height = min(max(beside.contentHeight(), 60), maxHeight)
         let frame = NotchGeometry.sideFrame(beside: panelRect, in: geometry.screenFrame,
                                             size: CGSize(width: beside.width, height: height), top: top)
         let panel = screen.beside ?? makeBeside(beside)

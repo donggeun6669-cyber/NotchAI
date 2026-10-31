@@ -62,77 +62,73 @@ extension Color {
 struct ApprovalSidePanel: View {
     @Bindable var approvals: JarvisApprovals
     var onFocusChange: (Bool) -> Void = { _ in }
-    /// Cards that start with their changed lines open (pictures of the panel).
-    var openDiffs: Set<String> = []
+    /// The live panel scrolls when its cards are taller than the screen allows; the copy used to
+    /// measure the panel's height does not (2026-11-01 6차: the panel was sized from a reading that
+    /// never arrived and showed only its title).
+    var scrolls = true
+
+    static let width: CGFloat = 220
 
     @Environment(\.colorScheme) private var scheme
     private var palette: StudioTheme.Palette { StudioTheme.palette(scheme) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 12) {
-                    ForEach(approvals.cards) { item in
-                        ApprovalCard(item: item, approvals: approvals, palette: palette, onFocusChange: onFocusChange,
-                                     showsDiff: openDiffs.contains(item.id))
-                    }
-                    if let problem = approvals.problem {
-                        Text(problem)
-                            .font(StudioTheme.font(12, .medium))
-                            .foregroundStyle(palette.muted)
-                    }
-                }
-                .padding(.bottom, 2)
-                .background(GeometryReader { proxy in
-                    Color.clear.preference(key: CardsHeight.self, value: proxy.size.height)
-                })
+        Group {
+            if scrolls {
+                ScrollView(showsIndicators: false) { content }
+            } else {
+                content.fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxHeight: .infinity)
+        }
+        .frame(width: Self.width)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(palette.background))
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            ForEach(approvals.cards) { item in
+                ApprovalCard(item: item, approvals: approvals, palette: palette, onFocusChange: onFocusChange)
+            }
+            if let problem = approvals.problem {
+                Text(problem)
+                    .font(StudioTheme.font(11, .medium))
+                    .foregroundStyle(palette.muted)
+            }
             if let reject = approvals.pendingRejects.last {
                 UndoBar(reject: reject) { approvals.undoReject(reject.id) }
             } else if let notice = approvals.rejectNotice {
                 Text(notice)
-                    .font(StudioTheme.font(12.5, .medium))
+                    .font(StudioTheme.font(11.5, .medium))
                     .foregroundStyle(.white)
                     .lineLimit(2)
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(StudioTheme.snackbar))
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(StudioTheme.snackbar))
             }
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(palette.background))
-        .onPreferenceChange(CardsHeight.self) { cards in
-            // Header, spacing, the snackbar's room and padding around the cards.
-            approvals.contentHeight = cards + 18 * 2 + 28 + 14 + 58
-        }
+        .padding(12)
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center) {
             Text(approvals.waitingCount > 0 ? "결재 \(approvals.waitingCount)건" : "결재")
-                .font(StudioTheme.font(22, .bold))
+                .font(StudioTheme.font(16, .bold))
                 .foregroundStyle(palette.text)
             Spacer(minLength: 0)
             Button { approvals.dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(palette.muted)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 22, height: 22)
                     .background(Circle().fill(palette.greyButton))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .help("닫기 — 새 결재가 오면 다시 열려요")
         }
+        .padding(.horizontal, 2)
     }
-}
-
-private struct CardsHeight: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 /// One item: who raised it, what it is, what the button will do, the evidence, and the decision.
@@ -142,25 +138,26 @@ private struct ApprovalCard: View {
     let palette: StudioTheme.Palette
     let onFocusChange: (Bool) -> Void
 
-    @State var showsDiff = false
-    @State private var writesNote = false
+    // Kept in the model so the measuring copy of the panel opens the same things.
+    private var showsDiff: Bool { approvals.openDiffs.contains(item.id) }
+    private var writesNote: Bool { approvals.openNotes.contains(item.id) }
 
     private var result: JarvisApproval? { approvals.results[item.id] }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text([item.teamWord, item.kindWord].compactMap { $0 }.joined(separator: " · "))
-                .font(StudioTheme.font(12, .medium))
+                .font(StudioTheme.font(10.5, .medium))
                 .foregroundStyle(palette.muted)
             Text(item.title)
-                .font(StudioTheme.font(16, .bold))
+                .font(StudioTheme.font(13, .bold))
                 .foregroundStyle(palette.text)
                 .fixedSize(horizontal: false, vertical: true)
             if let result {
                 outcome(result)
             } else {
                 Text(item.consequence)
-                    .font(StudioTheme.font(13, .medium))
+                    .font(StudioTheme.font(11.5, .medium))
                     .foregroundStyle(palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 evidence
@@ -168,9 +165,9 @@ private struct ApprovalCard: View {
                 actions
             }
         }
-        .padding(16)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(palette.card))
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(palette.card))
     }
 
     // MARK: Evidence
@@ -179,12 +176,12 @@ private struct ApprovalCard: View {
     private var evidence: some View {
         if let evidence = item.evidence {
             Text(evidence)
-                .font(StudioTheme.font(12.5))
+                .font(StudioTheme.font(11))
                 .foregroundStyle(palette.muted)
         }
         if let mail = item.mail, let preview = mail.preview {
             Text(preview)
-                .font(StudioTheme.font(12.5))
+                .font(StudioTheme.font(11))
                 .foregroundStyle(palette.secondary)
                 .lineLimit(showsDiff ? nil : 2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -194,8 +191,7 @@ private struct ApprovalCard: View {
         }
         if item.code != nil {
             link(showsDiff ? "바뀐 줄 접기" : "바뀐 줄 보기 ›") {
-                showsDiff.toggle()
-                if showsDiff { Task { await approvals.loadDetail(item.id) } }
+                approvals.toggleDiff(item.id)
             }
             if showsDiff {
                 if let code = approvals.details[item.id]?.code {
@@ -217,34 +213,35 @@ private struct ApprovalCard: View {
                                  placeholder: "메모 (결정과 함께 남아요)", isEnabled: true,
                                  onSubmit: { _ in }, onFocusChange: onFocusChange,
                                  textColor: NSColor(palette.text), placeholderColor: NSColor(palette.muted),
-                                 font: StudioTheme.nsFont(13))
-                    .frame(height: 22)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.greyButton))
+                                 font: StudioTheme.nsFont(11.5))
+                    .frame(height: 18)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(palette.greyButton))
             } else {
-                link("메모") { writesNote = true }
+                link("메모") { approvals.openNotes.insert(item.id) }
             }
             if approvals.deciding.contains(item.id) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(item.needsHold ? "합치는 중이에요" : "기록하는 중이에요")
-                        .font(StudioTheme.font(13, .medium))
+                        .font(StudioTheme.font(11.5, .medium))
                         .foregroundStyle(palette.secondary)
                 }
-                .frame(height: 40)
+                .frame(height: 32)
             } else {
                 // 1 : 1.6 — the quiet choice on the left, the one red button on the right.
                 GeometryReader { proxy in
-                    let unit = (proxy.size.width - 8) / 2.6
-                    HStack(spacing: 8) {
+                    let unit = (proxy.size.width - 6) / 2.6
+                    HStack(spacing: 6) {
                         Button { approvals.reject(item.id) } label: {
                             Text(item.kind == "mail_draft" ? "문제 있음" : "반려")
-                                .font(StudioTheme.font(14, .semibold))
+                                .font(StudioTheme.font(12, .semibold))
                                 .foregroundStyle(palette.greyButtonText)
-                                .frame(width: unit, height: 40)
-                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(palette.greyButton))
-                                .contentShape(RoundedRectangle(cornerRadius: 12))
+                                .lineLimit(1)
+                                .frame(width: unit, height: 32)
+                                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.greyButton))
+                                .contentShape(RoundedRectangle(cornerRadius: 10))
                         }
                         .buttonStyle(.plain)
                         if item.needsHold {
@@ -253,18 +250,18 @@ private struct ApprovalCard: View {
                         } else {
                             Button { Task { await approvals.approve(item.id) } } label: {
                                 Text("확인")
-                                    .font(StudioTheme.font(14, .semibold))
+                                    .font(StudioTheme.font(12, .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: unit * 1.6, height: 40)
-                                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(StudioTheme.red))
-                                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                                    .frame(width: unit * 1.6, height: 32)
+                                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(StudioTheme.red))
+                                    .contentShape(RoundedRectangle(cornerRadius: 10))
                             }
                             .buttonStyle(.plain)
                             .help("확인함으로 기록해요. 메일은 보내지 않아요")
                         }
                     }
                 }
-                .frame(height: 40)
+                .frame(height: 32)
             }
         }
     }
@@ -276,12 +273,12 @@ private struct ApprovalCard: View {
                 Image(systemName: result.didFail ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
                     .foregroundStyle(result.didFail ? palette.secondary : StudioTheme.success)
                 Text(result.statusWord)
-                    .font(StudioTheme.font(14, .bold))
+                    .font(StudioTheme.font(12.5, .bold))
                     .foregroundStyle(palette.text)
             }
             ForEach(Array(result.outcome.enumerated()), id: \.offset) { _, line in
                 Text(line)
-                    .font(StudioTheme.font(12.5))
+                    .font(StudioTheme.font(11))
                     .foregroundStyle(palette.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -297,14 +294,14 @@ private struct ApprovalCard: View {
             Image(systemName: "exclamationmark.circle")
             Text(text).fixedSize(horizontal: false, vertical: true)
         }
-        .font(StudioTheme.font(12.5, .semibold))
+        .font(StudioTheme.font(11, .semibold))
         .foregroundStyle(palette.secondary)
     }
 
     private func link(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(StudioTheme.font(12.5, .semibold))
+                .font(StudioTheme.font(11, .semibold))
                 .foregroundStyle(palette.muted)
                 .contentShape(Rectangle())
         }
@@ -327,14 +324,15 @@ struct HoldToConfirm: View {
                 StudioTheme.red
                 StudioTheme.redPressed.frame(width: proxy.size.width * progress)
                 Text(title)
-                    .font(StudioTheme.font(14, .semibold))
+                    .font(StudioTheme.font(12, .semibold))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
         }
-        .frame(height: 40)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .frame(height: 32)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
         .onLongPressGesture(minimumDuration: duration, maximumDistance: 40) {
             action()
         } onPressingChanged: { pressing in
@@ -359,21 +357,21 @@ private struct UndoBar: View {
             let left = max(0, Int(reject.deadline.timeIntervalSince(context.date).rounded(.up)))
             HStack(spacing: 8) {
                 Text("반려했어요")
-                    .font(StudioTheme.font(13, .medium))
+                    .font(StudioTheme.font(11.5, .medium))
                     .foregroundStyle(.white)
                 Spacer(minLength: 0)
                 Button(action: undo) {
                     Text("되돌리기 \(left)")
-                        .font(StudioTheme.font(13, .bold))
+                        .font(StudioTheme.font(11.5, .bold))
                         .foregroundStyle(StudioTheme.undo)
                         .monospacedDigit()
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(StudioTheme.snackbar))
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(StudioTheme.snackbar))
         }
     }
 }
@@ -391,7 +389,7 @@ private struct DiffView: View {
             if !code.tests.isEmpty {
                 ForEach(Array(code.tests.enumerated()), id: \.offset) { _, run in
                     Label(run.command, systemImage: run.ok ? "checkmark.circle.fill" : "xmark.circle")
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(run.ok ? StudioTheme.success : Color(hex: 0x6B6E75))
                         .lineLimit(1)
                         .help(run.output ?? "")
@@ -402,13 +400,13 @@ private struct DiffView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array((showsAll ? lines : Array(lines.prefix(Self.firstLines))).enumerated()), id: \.offset) { _, line in
                         Text(line.isEmpty ? " " : line)
-                            .font(.system(size: 10.5, design: .monospaced))
+                            .font(.system(size: 9.5, design: .monospaced))
                             .foregroundStyle(Self.color(of: line))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .textSelection(.enabled)
-                .padding(10)
+                .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // The black slab of the wallpaper; a shade deeper than a dark card so it still stands out.
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -425,7 +423,7 @@ private struct DiffView: View {
                         .foregroundStyle(Color(hex: 0x6B6E75))
                 }
             } else if let stat = code.diffstat {
-                Text(stat).font(.system(size: 10.5, design: .monospaced))
+                Text(stat).font(.system(size: 9.5, design: .monospaced))
             }
         }
     }

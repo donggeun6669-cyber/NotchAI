@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import NotchAI
 
@@ -231,26 +232,54 @@ struct JarvisApprovalFlowTests {
 
 struct SideFrameTests {
     private let builtIn = CGRect(x: 0, y: 0, width: 1512, height: 982)
-    private let size = CGSize(width: 280, height: 300)
+    private let size = CGSize(width: 220, height: 300)
 
-    @Test func rightOfTheNotchOnTheBuiltInScreen() {
+    /// 「노치 기본적으로 왼쪽에」 (6차).
+    @Test func leftOfTheNotchOnTheBuiltInScreen() {
         let panel = CGRect(x: 406, y: 982 - 424, width: 700, height: 424)
         let frame = NotchGeometry.sideFrame(beside: panel, in: builtIn, size: size, top: 944)
-        #expect(frame == CGRect(x: 1116, y: 644, width: 280, height: 300))
+        #expect(frame == CGRect(x: 176, y: 644, width: 220, height: 300))
     }
 
-    @Test func leftWhenTheRightHasNoRoom() {
+    @Test func rightWhenTheLeftHasNoRoom() {
         let screen = CGRect(x: 0, y: 0, width: 1300, height: 900)
-        let panel = CGRect(x: 520, y: 476, width: 700, height: 424)
+        let panel = CGRect(x: 100, y: 476, width: 700, height: 424)
         let frame = NotchGeometry.sideFrame(beside: panel, in: screen, size: size, top: 870)
-        #expect(frame.maxX == 510)
+        #expect(frame.minX == 810)
     }
 
     @Test func underThePanelOnAPortraitScreen() {
         let portrait = CGRect(x: 1512, y: -500, width: 1080, height: 1920)
         let panel = CGRect(x: 1702, y: 1420 - 424, width: 700, height: 424)
-        let frame = NotchGeometry.sideFrame(beside: panel, in: portrait, size: size, top: 1390)
+        let frame = NotchGeometry.sideFrame(beside: panel, in: portrait, size: CGSize(width: 220, height: 300), top: 1390)
         #expect(frame.maxY == panel.minY - 10)
         #expect(frame.minX >= portrait.minX && frame.maxX <= portrait.maxX)
+    }
+}
+
+@MainActor
+struct PanelHeightTests {
+    /// The panel's height comes from its cards: one card is short, two are taller, and an open diff
+    /// taller still. 6차: the panel showed only its title because its height never arrived.
+    @Test func theMeasuredHeightFollowsTheCards() async {
+        let server = FakeApprovals(["GET /approvals?status=pending": (200, "[\(codeItem)]"),
+                                    "GET /approvals/\("a20261101-034536-19d469")": (200, codeItem)])
+        let approvals = JarvisApprovals(jarvis: JarvisService(transport: server, address: base))
+        await approvals.refresh()
+        func height() -> CGFloat {
+            let hosting = NSHostingView(rootView: ApprovalSidePanel(approvals: approvals, scrolls: false))
+            hosting.layoutSubtreeIfNeeded()
+            return hosting.fittingSize.height
+        }
+        let one = height()
+        #expect(one > 150)
+        #expect(one < 330)
+        await server.set("GET /approvals?status=pending", 200, "[\(codeItem),\(mailItem)]")
+        await approvals.refresh()
+        let two = height()
+        #expect(two > one + 100)
+        approvals.toggleDiff("a20261101-034536-19d469")
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(height() > two)
     }
 }

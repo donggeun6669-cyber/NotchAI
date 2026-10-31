@@ -24,12 +24,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Put the panel on screen before anything reads files: if a read waits on a macOS privacy
         // prompt, the notch is already there (and the prompt has an app with a window to show for).
         let controller = NotchWindowController(app: app)
-        // The 결재 panel beside the open notch (2026-11-01 5차).
+        // The 결재 panel beside the open notch (2026-11-01 5차 · 6차). Its height comes from a copy of
+        // its content laid out without scrolling, measured a few times a second while it is up.
         let approvals = app.approvals
+        let measure = NSHostingView(rootView: ApprovalSidePanel(approvals: approvals, scrolls: false))
+        var measured: (at: Date, height: CGFloat) = (.distantPast, 0)
         controller.beside = NotchBeside(
-            width: 280,
+            width: ApprovalSidePanel.width,
             isWanted: { approvals.wantsPanel },
-            contentHeight: { approvals.contentHeight },
+            contentHeight: {
+                if Date.now.timeIntervalSince(measured.at) > 0.25 {
+                    measure.rootView = ApprovalSidePanel(approvals: approvals, scrolls: false)
+                    measure.layoutSubtreeIfNeeded()
+                    measured = (.now, measure.fittingSize.height)
+                }
+                return measured.height
+            },
             makeView: {
                 let hosting = NSHostingView(rootView: ApprovalSidePanel(approvals: approvals))
                 hosting.sizingOptions = []

@@ -67,22 +67,28 @@ struct JarvisSnapshots {
         approvals.undoDelay = .seconds(60)
         await approvals.refresh()
         await approvals.loadDetail("c1")
-        let size = CGSize(width: 280, height: 560)
+        func size() -> CGSize {
+            let measure = NSHostingView(rootView: ApprovalSidePanel(approvals: approvals, scrolls: false))
+            measure.layoutSubtreeIfNeeded()
+            return measure.fittingSize
+        }
 
         for dark in [false, true] {
             let tag = dark ? "dark" : "light"
-            try await shoot(ApprovalSidePanel(approvals: approvals), "1-cards-\(tag)", size: size, dark: dark, in: folder)
-            try await shoot(ApprovalSidePanel(approvals: approvals, openDiffs: ["c1"]), "2-diff-open-\(tag)",
-                            size: CGSize(width: 280, height: 760), dark: dark, in: folder)
+            try await shoot(ApprovalSidePanel(approvals: approvals), "1-cards-\(tag)", size: size(), dark: dark, in: folder)
+            approvals.toggleDiff("c1")
+            try await Task.sleep(for: .milliseconds(200))
+            try await shoot(ApprovalSidePanel(approvals: approvals), "2-diff-open-\(tag)", size: size(), dark: dark, in: folder)
+            approvals.toggleDiff("c1")
         }
         approvals.reject("m1")
-        try await shoot(ApprovalSidePanel(approvals: approvals), "3-reject-undo-light", size: size, dark: false, in: folder)
+        try await shoot(ApprovalSidePanel(approvals: approvals), "3-reject-undo-light", size: size(), dark: false, in: folder)
         approvals.undoReject("m1")
         await server.set("POST /approvals/c1/approve", 200, Self.code.replacingOccurrences(
             of: #""status":"pending","status_ko":"결재 대기""#,
             with: #""status":"applied","status_ko":"반영됨","outcome":{"merged":true,"method":"fast-forward","push":"원격 저장소가 없어 push 하지 않았어요."}"#))
         await approvals.approve("c1")
-        try await shoot(ApprovalSidePanel(approvals: approvals), "4-approved-light", size: size, dark: false, in: folder)
+        try await shoot(ApprovalSidePanel(approvals: approvals), "4-approved-light", size: size(), dark: false, in: folder)
 
         // The pill beside the closed notch, on the notch's black.
         let pill = HStack(spacing: 5) {

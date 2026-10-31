@@ -108,6 +108,7 @@ struct RecorderTests {
         try Data("x".utf8).write(to: folder.appendingPathComponent("2026-09-21_1000_녹음.srt"))
 
         let recorder = RecorderService(folder: folder)
+        recorder.reloadRecents()   // at launch this happens in the background
         #expect(recorder.recents.count == 2)
         #expect(recorder.recents.allSatisfy { $0.url.pathExtension == "m4a" })
         #expect(recorder.recents.first?.startedAt ?? .distantPast

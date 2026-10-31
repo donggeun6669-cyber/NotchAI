@@ -104,17 +104,17 @@ struct NotchGeometry: Equatable {
         return CGRect(x: notchRect.midX - width / 2, y: screenFrame.maxY - height, width: width, height: height)
     }
 
-    /// Where a panel beside the open notch goes (NotchAI's 결재, 2026-11-01): to the right, top-aligned
-    /// with the panel body; to the left when the right side has no room; under the panel when
-    /// neither side does (a portrait display).
+    /// Where a panel beside the open notch goes (NotchAI's 결재, 2026-11-01): to the left, top-aligned
+    /// with the panel body (6차, 동근님 「노치 기본적으로 왼쪽에」); to the right when the left has no
+    /// room; under the panel when neither side does (a portrait display).
     static func sideFrame(beside panel: CGRect, in screen: CGRect, size: CGSize, top: CGFloat,
                           gap: CGFloat = 10, margin: CGFloat = 8) -> CGRect {
         let height = min(size.height, top - screen.minY - margin)
-        if panel.maxX + gap + size.width <= screen.maxX - margin {
-            return CGRect(x: panel.maxX + gap, y: top - height, width: size.width, height: height)
-        }
         if panel.minX - gap - size.width >= screen.minX + margin {
             return CGRect(x: panel.minX - gap - size.width, y: top - height, width: size.width, height: height)
+        }
+        if panel.maxX + gap + size.width <= screen.maxX - margin {
+            return CGRect(x: panel.maxX + gap, y: top - height, width: size.width, height: height)
         }
         let below = panel.minY - gap
         let x = min(max(panel.maxX - size.width, screen.minX + margin), screen.maxX - margin - size.width)

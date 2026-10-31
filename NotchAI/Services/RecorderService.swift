@@ -73,7 +73,7 @@ final class RecorderService: NSObject {
         case finishing
     }
 
-    struct Take: Equatable, Identifiable {
+    struct Take: Equatable, Identifiable, Sendable {
         var id: URL { url }
         var url: URL
         var startedAt: Date
@@ -229,7 +229,16 @@ final class RecorderService: NSObject {
         AudioDevices.removeStaleAggregates()
         restoreOutputAfterCrash()
         reloadDevices()
-        reloadRecents()
+        // Off the main thread at launch: reading the recordings folder once kept the notch from
+        // appearing for half a minute after an update (2026-11-01, the app waited inside `open`).
+        let folder = folderURL
+        Task.detached(priority: .utility) { [weak self] in
+            let takes = RecorderService.recentTakes(in: folder)
+            await MainActor.run {
+                guard let self, self.recents.isEmpty else { return }
+                self.recents = takes
+            }
+        }
     }
 
     // MARK: - Devices
@@ -706,9 +715,13 @@ final class RecorderService: NSObject {
     // MARK: - Files
 
     func reloadRecents() {
+        recents = Self.recentTakes(in: folderURL)
+    }
+
+    nonisolated static func recentTakes(in folder: URL) -> [Take] {
         let keys: Set<URLResourceKey> = [.creationDateKey]
         let urls = (try? FileManager.default.contentsOfDirectory(
-            at: folderURL, includingPropertiesForKeys: Array(keys))) ?? []
+            at: folder, includingPropertiesForKeys: Array(keys))) ?? []
         // Newest first, and only as many files opened as it takes: the notch reloads this every
         // time it opens, and the folder holds a whole semester.
         let dated = urls
@@ -716,11 +729,11 @@ final class RecorderService: NSObject {
             .map { ($0, (try? $0.resourceValues(forKeys: keys).creationDate) ?? .distantPast) }
             .sorted { $0.1 > $1.1 }
         var takes: [Take] = []
-        for (url, created) in dated where takes.count < Self.recentCount {
-            let seconds = Int(Self.duration(of: url))
+        for (url, created) in dated where takes.count < recentCount {
+            let seconds = Int(duration(of: url))
             if seconds > 0 { takes.append(Take(url: url, startedAt: created, seconds: seconds)) }
         }
-        recents = takes
+        return takes
     }
 
     /// Length of a finished file, or 0 when it cannot be read.

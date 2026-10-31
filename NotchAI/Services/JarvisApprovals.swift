@@ -212,9 +212,9 @@ final class JarvisApprovals {
     /// The list could not be read.
     private(set) var problem: String?
     var notes: [String: String] = [:]
-
-    /// Height the panel's content asks for (reported by the view).
-    @ObservationIgnored var contentHeight: CGFloat = 0
+    /// Cards with their changed lines open, and with the note field open.
+    var openDiffs: Set<String> = []
+    var openNotes: Set<String> = []
     @ObservationIgnored var undoDelay: Duration = .seconds(5)
     @ObservationIgnored var pillDuration: Duration = .seconds(10)
 
@@ -289,6 +289,14 @@ final class JarvisApprovals {
         }
         knownIDs = (knownIDs ?? []).union(ids)
         if list.isEmpty && results.isEmpty { forcedOpen = false }
+    }
+
+    /// 「바뀐 줄 보기」: opens the lines in the card, reading them the first time.
+    func toggleDiff(_ id: String) {
+        if openDiffs.remove(id) == nil {
+            openDiffs.insert(id)
+            Task { await loadDetail(id) }
+        }
     }
 
     /// The full item, for its diff.
