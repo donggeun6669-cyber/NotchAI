@@ -7,8 +7,6 @@ import SwiftUI
 struct RecordPanel: View {
     let recorder: RecorderService
     let accent: Color
-    /// Bigger buttons and type: NotchAI's panel is the recorder first (2026-11-01).
-    var large = false
     /// Something for the header's right end beside the folder button (NotchAI's `…` menu).
     var accessory: AnyView?
 
@@ -16,7 +14,7 @@ struct RecordPanel: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Text("녹음")
-                    .font(.system(size: large ? 13 : 11.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
                 if recorder.isRunning {
                     Circle().fill(NotchPalette.red).frame(width: 6, height: 6)
@@ -71,21 +69,21 @@ struct RecordPanel: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: mode.symbol)
-                            .font(.system(size: large ? 13 : 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(selected ? accent : .white.opacity(0.45))
                             .frame(width: 16)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(Self.shortLabel(mode))
-                                .font(.system(size: large ? 12.5 : 11, weight: .semibold, design: .rounded))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.white.opacity(selected ? 0.96 : 0.68))
                             Text(mode == .classroom ? "주변 소리" : "맥 소리")
-                                .font(.system(size: large ? 9.5 : 8.5))
+                                .font(.system(size: 8.5))
                                 .foregroundStyle(.white.opacity(selected ? 0.5 : 0.3))
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, large ? 7 : 5)
+                    .padding(.vertical, 5)
                     .background {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(.white.opacity(selected ? 0.11 : 0.045))
@@ -268,10 +266,10 @@ struct RecordPanel: View {
                 Image(systemName: "waveform.circle.fill")
                 Text("3초 확인 후 녹음")
             }
-            .font(.system(size: large ? 13 : 11.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
             .foregroundStyle(.white.opacity(recorder.canStart ? 0.96 : 0.4))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, large ? 10 : 7)
+            .padding(.vertical, 7)
             .background(Capsule().fill(accent.opacity(recorder.canStart ? 0.82 : 0.24)))
             .contentShape(Capsule())
         }

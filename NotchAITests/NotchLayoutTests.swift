@@ -4,9 +4,10 @@ import Testing
 
 @MainActor
 struct NotchFeaturesTests {
-    @Test func everythingButTheRecorderStartsHidden() {
+    /// 「자주 가는 사이트 정도는 써. 그 외엔 잘 안 씀」 (2026-11-01).
+    @Test func onlyTheSitesStartShown() {
         let features = NotchFeatures(defaults: nil)
-        #expect(features.enabled.isEmpty)
+        #expect(features.enabled == [.launcher])
         #expect(features.deskTabs.isEmpty)
         #expect(!features.hasLeftColumn)
     }
@@ -27,14 +28,14 @@ struct NotchFeaturesTests {
         #expect(features.hasLeftColumn)
 
         let reopened = NotchFeatures(defaults: defaults)
-        #expect(reopened.enabled == [.timer, .music])
+        #expect(reopened.enabled == [.timer, .music, .launcher])
         reopened.set(.timer, false)
+        reopened.set(.launcher, false)   // switched off stays off
         #expect(NotchFeatures(defaults: defaults).enabled == [.music])
     }
 
     @Test func theCalendarAloneOpensTheLeftColumn() {
         let features = NotchFeatures(defaults: nil)
-        features.set(.launcher, true)
         features.set(.agents, true)
         #expect(!features.hasLeftColumn)
         features.set(.calendar, true)
@@ -44,29 +45,31 @@ struct NotchFeaturesTests {
 
 @MainActor
 struct PanelLayoutTests {
-    @Test func theRecorderAloneIsSmallerThanTheOldPanel() {
-        let layout = AppModel.layout(features: NotchFeatures(defaults: nil), jarvis: false)
-        #expect(layout.body.width < NotchGeometry.minExpandedWidth)
-        #expect(layout.body.height < NotchGeometry.expandedBodyHeight)
+    /// 「노치 화면 아까처럼 더 크게」: with Jarvis on the left, the panel has its old size.
+    @Test func withJarvisThePanelIsTheOldSize() {
+        let layout = AppModel.layout(features: NotchFeatures(defaults: nil), jarvis: true)
+        #expect(layout.body == AppModel.panelSize)
+        #expect(layout.body == CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight))
         #expect(layout.narrowWing == NotchGeometry.compactWingWidth)
     }
 
-    @Test func eachPartAddsItsOwnRoom() {
+    @Test func withoutJarvisOnlyTheRightColumnRemains() {
         let features = NotchFeatures(defaults: nil)
-        let alone = AppModel.layout(features: features, jarvis: false)
-        let withJarvis = AppModel.layout(features: features, jarvis: true)
-        #expect(withJarvis.body.height > alone.body.height)
-        #expect(withJarvis.body.width == alone.body.width)
-
-        features.set(.agents, true)
-        let withAgents = AppModel.layout(features: features, jarvis: true)
-        #expect(withAgents.body.height > withJarvis.body.height)
-        #expect(withAgents.narrowWing > alone.narrowWing)   // the characters join the wings
-
+        let sites = AppModel.layout(features: features, jarvis: false)
+        #expect(sites.body.width < AppModel.panelSize.width)
+        features.set(.launcher, false)
+        let recorderOnly = AppModel.layout(features: features, jarvis: false)
+        #expect(recorderOnly.body.height < sites.body.height)
         features.set(.calendar, true)
-        let withCalendar = AppModel.layout(features: features, jarvis: true)
-        #expect(withCalendar.body.width > withAgents.body.width)
-        #expect(withCalendar.body.height >= AppModel.leftColumnMinHeight)
+        #expect(AppModel.layout(features: features, jarvis: false).body == AppModel.panelSize)
+    }
+
+    @Test func theCharactersWidenTheWings() {
+        let features = NotchFeatures(defaults: nil)
+        features.set(.agents, true)
+        let layout = AppModel.layout(features: features, jarvis: true)
+        #expect(layout.narrowWing > NotchGeometry.compactWingWidth)
+        #expect(layout.wideWing > layout.narrowWing)
     }
 
     @Test func geometryFollowsTheLayout() {

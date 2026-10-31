@@ -224,10 +224,25 @@ enum JarvisSettings {
     }
 }
 
-/// GET and nothing else. A protocol so the tests can answer for the server.
+/// How the notch talks to the server. A protocol so the tests can answer for it.
 protocol JarvisTransport: Sendable {
     /// The body and HTTP status. Throws only when there was no HTTP answer at all.
     func get(_ url: URL) async throws -> (Data, Int)
+    /// A request with an optional JSON body (the chat's POSTs).
+    func send(_ method: String, _ url: URL, json: Data?) async throws -> (Data, Int)
+    /// A request whose answer is an event stream: the status, then the body line by line as it
+    /// arrives (for a status other than 200, the whole body as one line).
+    func lines(_ method: String, _ url: URL, json: Data?) async throws -> (Int, AsyncThrowingStream<String, Error>)
+}
+
+extension JarvisTransport {
+    func send(_ method: String, _ url: URL, json: Data?) async throws -> (Data, Int) {
+        throw URLError(.unsupportedURL)
+    }
+
+    func lines(_ method: String, _ url: URL, json: Data?) async throws -> (Int, AsyncThrowingStream<String, Error>) {
+        throw URLError(.unsupportedURL)
+    }
 }
 
 struct URLSessionJarvisTransport: JarvisTransport {
@@ -243,9 +258,57 @@ struct URLSessionJarvisTransport: JarvisTransport {
         return URLSession(configuration: configuration)
     }()
 
+    /// A reply can take minutes when Jarvis uses tools; only a long silence between bytes ends it.
+    private let streaming: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 180
+        configuration.timeoutIntervalForResource = 30 * 60
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
+    }()
+
     func get(_ url: URL) async throws -> (Data, Int) {
         let (data, response) = try await session.data(from: url)
         return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
+    private static func request(_ method: String, _ url: URL, json: Data?) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let json {
+            request.httpBody = json
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        return request
+    }
+
+    func send(_ method: String, _ url: URL, json: Data?) async throws -> (Data, Int) {
+        let (data, response) = try await session.data(for: Self.request(method, url, json: json))
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
+    func lines(_ method: String, _ url: URL, json: Data?) async throws -> (Int, AsyncThrowingStream<String, Error>) {
+        let (bytes, response) = try await streaming.bytes(for: Self.request(method, url, json: json))
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let stream = AsyncThrowingStream<String, Error> { continuation in
+            let task = Task {
+                do {
+                    if status == 200 {
+                        for try await line in bytes.lines { continuation.yield(line) }
+                    } else {
+                        var body = Data()
+                        for try await byte in bytes { body.append(byte) }
+                        continuation.yield(String(decoding: body, as: UTF8.self))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+        return (status, stream)
     }
 }
 
@@ -296,7 +359,7 @@ final class JarvisService {
         return nil
     }
 
-    @ObservationIgnored private let transport: any JarvisTransport
+    @ObservationIgnored let transport: any JarvisTransport
     @ObservationIgnored private let persists: Bool
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var isStarted = false

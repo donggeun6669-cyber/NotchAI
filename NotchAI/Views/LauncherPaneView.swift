@@ -155,6 +155,7 @@ enum ShortTime {
 /// Folders, files and links dropped here are added to it.
 struct SitesPane: View {
     let launcher: LauncherService
+    var columns = 2
     @State private var isDropTarget = false
 
     var body: some View {
@@ -167,7 +168,7 @@ struct SitesPane: View {
                 Spacer(minLength: 0)
                 LauncherMenu(launcher: launcher)
             }
-            LauncherPane(launcher: launcher, columns: 2)
+            LauncherPane(launcher: launcher, columns: columns)
         }
         .padding(isDropTarget ? 4 : 0)
         .background {

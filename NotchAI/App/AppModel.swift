@@ -14,8 +14,10 @@ final class AppModel {
     let schedule = ScheduleService()
     /// One-click openers: the sites in daily use and each project's own page.
     let launcher = LauncherService()
-    /// The assistant on the always-on desktop (2026-11-01): its light beside the notch, its jobs inside.
-    let jarvis = JarvisService()
+    /// The assistant on the always-on desktop (2026-11-01): its light beside the notch, and in the
+    /// open panel its jobs and a conversation with it.
+    let jarvis: JarvisService
+    let chat: JarvisChat
     /// What is shown, and so what runs.
     let features: NotchFeatures
 
@@ -41,6 +43,9 @@ final class AppModel {
          features: NotchFeatures = NotchFeatures()) {
         self.providers = providers
         self.features = features
+        let jarvis = JarvisService()
+        self.jarvis = jarvis
+        chat = JarvisChat(jarvis: jarvis)
     }
 
     func start() {
@@ -96,37 +101,32 @@ final class AppModel {
 
     // MARK: Sizes
 
-    /// The open panel's column of recorder, Jarvis and whatever else is on.
-    static let mainColumnWidth: CGFloat = 336
-    /// Calendar and desk to the left of it, when either is on.
-    static let leftColumnWidth: CGFloat = 400
-    static let panelPadding = (horizontal: CGFloat(18), top: CGFloat(6), bottom: CGFloat(14))
-    static let sectionSpacing: CGFloat = 10
-    static let recorderHeight: CGFloat = 214
-    static let launcherHeight: CGFloat = 112
+    /// The open panel (2026-11-01, 「노치 화면 아까처럼 더 크게」): Jarvis on the left where the
+    /// calendar was, the recorder and the sites on the right — the size it had before. Without
+    /// Jarvis or anything else for the left, just the right column.
+    static let panelSize = CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight)
+    static let rightColumnWidth: CGFloat = 236
+    static let panelPadding = (horizontal: CGFloat(18), top: CGFloat(6), bottom: CGFloat(12))
+    static let sectionSpacing: CGFloat = 8
+    /// The compact recorder: the four situations, the device, the 3-second check.
+    static let recorderHeight: CGFloat = 182
+    /// The title and three rows of two sites; more scroll.
+    static let launcherHeight: CGFloat = 96
     static let agentsHeight: CGFloat = 58
-    /// The calendar and desk need this much height to be worth showing.
-    static let leftColumnMinHeight: CGFloat = 392
 
-    /// The panel fits what is on: the recorder alone is small; each part adds its own height.
     static func layout(features: NotchFeatures, jarvis: Bool) -> NotchLayout {
         let agents = features.isOn(.agents)
-        // A divider and the spacing either side of it before every part after the recorder.
-        let gap = sectionSpacing * 2 + 1
-        var main = recorderHeight
-        if features.isOn(.launcher) { main += gap + launcherHeight }
-        if jarvis { main += gap + JarvisSection.height }
-        if agents { main += gap + agentsHeight }
-
-        var height = panelPadding.top + main + panelPadding.bottom
-        var width = mainColumnWidth + panelPadding.horizontal * 2
-        if features.hasLeftColumn {
-            height = max(height, leftColumnMinHeight)
-            width += leftColumnWidth + 29   // the divider between the columns, with its spacing
-        }
         // The characters share the wings with the recorder's mark and Jarvis's light.
-        return NotchLayout(narrowWing: agents ? 54 : NotchGeometry.compactWingWidth,
-                           wideWing: agents ? 104 : 80,
-                           body: CGSize(width: width, height: height))
+        var layout = NotchLayout(narrowWing: agents ? 54 : NotchGeometry.compactWingWidth,
+                                 wideWing: agents ? 104 : 80, body: panelSize)
+        if !jarvis && !features.hasLeftColumn {
+            let gap = sectionSpacing * 2 + 1
+            var height = recorderHeight
+            if features.isOn(.launcher) { height += gap + launcherHeight }
+            if agents { height += gap + agentsHeight }
+            layout.body = CGSize(width: rightColumnWidth + panelPadding.horizontal * 2,
+                                 height: panelPadding.top + height + panelPadding.bottom)
+        }
+        return layout
     }
 }

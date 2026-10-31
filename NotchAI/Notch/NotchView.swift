@@ -52,7 +52,10 @@ struct NotchView: View {
             Button("Quit NotchAI") { NSApp.terminate(nil) }
         }
         .onChange(of: model.isExpanded) { _, open in
-            if open { app.jarvis.wantJobs() }   // the job list should be fresh when it is seen
+            guard open else { return }
+            // The job list and the conversation should be fresh when they are seen.
+            app.jarvis.wantJobs()
+            Task { await app.chat.open() }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: model.isExpanded)
         .animation(.spring(response: 0.4, dampingFraction: 0.9), value: compact)

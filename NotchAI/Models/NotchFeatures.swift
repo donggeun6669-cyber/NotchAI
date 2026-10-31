@@ -2,9 +2,9 @@ import Foundation
 import Observation
 
 /// Which parts of the notch are switched on (2026-11-01). The recorder and Jarvis are always
-/// there; the rest start hidden because 동근님 uses the notch for recording — 「쓰는 건 녹음뿐」 —
-/// and each comes back with one click in the `…` menu. A hidden part does not run at all: no
-/// polling, no helper process, no file reading.
+/// there, and the sites start shown (「자주 가는 사이트 정도는 써」); the rest start hidden because
+/// they went unused, and each comes back with one click in the `…` menu. A hidden part does not
+/// run at all: no polling, no helper process, no file reading.
 @MainActor
 @Observable
 final class NotchFeatures {
@@ -31,6 +31,9 @@ final class NotchFeatures {
             }
         }
 
+        /// Shown until the user says otherwise.
+        var isOnByDefault: Bool { self == .launcher }
+
         /// The desk tab this feature is, if it is one.
         var deskTab: DeskView.Tab? {
             switch self {
@@ -52,7 +55,9 @@ final class NotchFeatures {
     /// `defaults: nil` keeps the switches in memory only (tests).
     init(defaults: UserDefaults? = .standard) {
         self.defaults = defaults
-        enabled = Set(Feature.allCases.filter { defaults?.bool(forKey: Self.key($0)) == true })
+        enabled = Set(Feature.allCases.filter {
+            defaults?.object(forKey: Self.key($0)) as? Bool ?? $0.isOnByDefault
+        })
     }
 
     static func key(_ feature: Feature) -> String { "show." + feature.rawValue }
