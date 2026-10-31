@@ -203,7 +203,8 @@ struct JarvisPane: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 8) {
                         ForEach(chat.lines) { line in
-                            JarvisBubble(line: line, answering: chat.isAnswering && line.id == chat.lines.last?.id)
+                            JarvisBubble(line: line, answering: chat.isAnswering && line.id == chat.lines.last?.id,
+                                         onStop: { chat.stop() })
                                 .id(line.id)
                         }
                     }
@@ -236,12 +237,12 @@ struct JarvisPane: View {
                         onFocusChange(typing)
                         if typing { chat.warm() }
                     })
-                if chat.isAnswering {
-                    sendButton("stop.circle.fill", help: "답 멈추기") { chat.stop() }
-                } else {
-                    sendButton("arrow.up.circle.fill", help: "보내기 (Return)") { chat.send(nil) }
-                        .disabled(chat.draft.trimmingCharacters(in: .whitespaces).isEmpty || jarvis.presence == nil)
-                }
+                // Stop lives with the answer, never where Send was: a single click once sent a
+                // question and stopped it, because Stop took Send's place under the pointer.
+                sendButton("arrow.up.circle.fill", help: "보내기 (Return)") { chat.send(nil) }
+                    .disabled(chat.isAnswering || chat.draft.trimmingCharacters(in: .whitespaces).isEmpty
+                              || jarvis.presence == nil)
+                    .opacity(chat.isAnswering ? 0.35 : 1)
             }
             .padding(.leading, 10)
             .padding(.trailing, 4)
@@ -338,6 +339,7 @@ struct JarvisInputField: NSViewRepresentable {
 private struct JarvisBubble: View {
     let line: JarvisChatLine
     let answering: Bool
+    let onStop: () -> Void
 
     var body: some View {
         switch line.role {
@@ -375,6 +377,11 @@ private struct JarvisBubble: View {
                 Text(line.step.map { "일하는 중 · \($0)" } ?? (line.text.isEmpty ? "생각 중" : "쓰는 중"))
                     .lineLimit(1)
                 AnimatedDots(period: line.step == nil ? 1.2 : 0.8)
+                Button("멈추기", action: onStop)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.leading, 6)
+                    .help("답을 여기서 멈춥니다")
             }
             .font(.system(size: 9.5, weight: .medium))
             .foregroundStyle(JarvisOrbView.blue.opacity(0.85))

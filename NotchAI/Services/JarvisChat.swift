@@ -103,6 +103,10 @@ final class JarvisChat {
     @ObservationIgnored private var lastLoad: Date?
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     @ObservationIgnored private var warmed: String?
+    @ObservationIgnored private var askedAt: Date?
+
+    /// A stop this soon after asking is the same click landing twice, not a decision.
+    static let stopGrace: TimeInterval = 1.5
 
     init(jarvis: JarvisService, defaults: UserDefaults? = .standard) {
         self.jarvis = jarvis
@@ -198,6 +202,7 @@ final class JarvisChat {
         draft = ""
         notice = nil
         isAnswering = true
+        askedAt = .now
         lines.append(JarvisChatLine(id: UUID().uuidString, role: .user, text: text, state: .done))
         Task {
             var id = conversationID
@@ -210,7 +215,10 @@ final class JarvisChat {
         }
     }
 
-    func stop() {
+    /// Interrupts the answer. Ignored in the first moments after asking (2026-11-01: one click both
+    /// sent a question and stopped it, 1 second apart).
+    func stop(now: Date = .now) {
+        if let askedAt, now.timeIntervalSince(askedAt) < Self.stopGrace { return }
         guard isAnswering, let id = conversationID, let url = url("/api/conversations/\(id)/stop") else { return }
         let transport = jarvis.transport
         Task { _ = try? await transport.send("POST", url, json: nil) }

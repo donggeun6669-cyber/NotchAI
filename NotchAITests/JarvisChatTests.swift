@@ -149,6 +149,20 @@ struct JarvisChatTests {
         #expect(chat.lines.last?.serverID == 42)
     }
 
+    /// 2026-11-01: one click sent a question and, a second later, stopped it.
+    @Test func aStopRightAfterAskingIsIgnored() async throws {
+        let server = FakeChatServer(
+            answers: ["GET /presence": (200, online), "POST /api/conversations": (201, #"{"id":"c3"}"#),
+                      "POST /api/conversations/c3/stop": (200, #"{"stopping":true}"#)],
+            streams: ["POST /api/conversations/c3/messages": (200, [#"data: {"type":"delta","text":"…"}"#])])
+        let (_, chat, defaults, suite) = await make(server)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        chat.send("천천히 답해줘")
+        chat.stop()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await !server.asked.contains("POST /api/conversations/c3/stop"))
+    }
+
     @Test func todaysConversationIsReloaded() async throws {
         let history = #"{"id":"c9","messages":[{"id":1,"role":"user","text":"안녕","status":"done"},{"id":2,"role":"assistant","text":"안녕하세요","status":"done","job_ids":[]}]}"#
         let server = FakeChatServer(answers: ["GET /presence": (200, online),

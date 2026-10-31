@@ -24,7 +24,7 @@
 
 - **Swift 6 · SwiftUI · AppKit** (`NSPanel`로 노치에 붙는 패널) · Observation
 - **XcodeGen** — `project.yml`에서 Xcode 프로젝트를 만듭니다
-- **Swift Testing** — 단위 테스트 176개 (`NotchAITests/`)
+- **Swift Testing** — 단위 테스트 177개 (`NotchAITests/`)
 - 음성 전사: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (`large-v3-turbo` 모델)
 - 재생 정보: [mediaremote-adapter](Vendor/mediaremote-adapter) (BSD-3, 원저작자 라이선스 포함)
 
