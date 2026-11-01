@@ -61,6 +61,7 @@ struct JarvisApproval: Identifiable, Equatable {
         switch kind {
         case "mail_draft": "메일 초안"
         case "code_change": "코드 변경"
+        case "dean_change": "DEAN 변경"
         default: kind
         }
     }
@@ -70,6 +71,7 @@ struct JarvisApproval: Identifiable, Equatable {
         switch kind {
         case "mail_draft": "메일"
         case "code_change": "코드"
+        case "dean_change": "DEAN"
         default: kind
         }
     }
@@ -78,6 +80,7 @@ struct JarvisApproval: Identifiable, Equatable {
         switch team {
         case "dev"?: "개발팀"
         case "secretary"?: "비서실"
+        case "dean"?: "DEAN 팀"
         case let other?: other
         case nil: nil
         }
@@ -94,6 +97,8 @@ struct JarvisApproval: Identifiable, Equatable {
             let base = code?.baseBranch ?? "기본 브랜치"
             let push = code?.remote.map { "\($0)에 push" } ?? "push 안 함"
             return "\(name) \(base)에 합쳐요 · \(push)"
+        case "dean_change":
+            return "DEAN 파일에 그대로 써요 · 그새 바뀌었으면 쓰지 않아요"
         default:
             return "데스크탑 Jarvis가 처리해요"
         }

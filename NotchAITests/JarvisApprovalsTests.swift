@@ -80,6 +80,13 @@ struct JarvisApprovalParsingTests {
         #expect(!item.needsHold && item.teamWord == "비서실" && item.shortKind == "메일")
     }
 
+    @Test func aDeanChangeIsNamedAndNeedsAHold() throws {
+        let json = #"{"id":"a1","kind":"dean_change","team":"dean","status":"pending","title":"DEAN 변경: 메모 정리"}"#
+        let item = try #require(JarvisApproval.parse(item: Data(json.utf8)))
+        #expect(item.kindWord == "DEAN 변경" && item.shortKind == "DEAN" && item.teamWord == "DEAN 팀")
+        #expect(item.needsHold && item.consequence.hasPrefix("DEAN 파일에 그대로 써요"))
+    }
+
     @Test func outcomesAreSaidAsTheServerSaidThem() throws {
         let applied = try #require(JarvisApproval.parse(item: Data(decided(codeItem, status: "applied", word: "반영됨",
             outcome: #"{"merged":true,"pushed":false,"method":"fast-forward","push":"원격 저장소가 없어 push 하지 않았어요."}"#).utf8)))
