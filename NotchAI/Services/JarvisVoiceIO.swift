@@ -242,7 +242,8 @@ final class EngineVoicePlayer: VoicePlayer {
     }
 
     nonisolated private static func finished(generation: Int, player: EngineVoicePlayer,
-                                             done: @escaping @MainActor @Sendable () -> Void) -> AVAudioPlayerNodeCompletionHandler {
+                                             done: @escaping @MainActor @Sendable () -> Void)
+        -> @Sendable (AVAudioPlayerNodeCompletionCallbackType) -> Void {
         { [weak player] _ in
             Task { @MainActor in
                 guard let player, player.generation == generation else { return }

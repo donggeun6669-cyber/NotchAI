@@ -73,7 +73,7 @@ final class AppModel {
         }
         talkKeyOutcome = talkKey?.register(jarvis.isEnabled ? JarvisTalkKey.current.combo : nil) ?? .off
         Logger(subsystem: "com.dongeun.NotchAI", category: "voice")
-            .info("talk key \(JarvisTalkKey.current.rawValue, privacy: .public): \(String(describing: self.talkKeyOutcome), privacy: .public)")
+            .notice("talk key \(JarvisTalkKey.current.rawValue, privacy: .public): \(String(describing: self.talkKeyOutcome), privacy: .public)")
     }
 
     func start() {
