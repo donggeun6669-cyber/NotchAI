@@ -87,6 +87,13 @@ struct JarvisApprovalParsingTests {
         #expect(item.needsHold && item.consequence.hasPrefix("DEAN 파일에 그대로 써요"))
     }
 
+    @Test func aWorkspaceChangeIsNamedAndNeedsAHold() throws {
+        let json = #"{"id":"a2","kind":"workspace_change","team":"workspace","status":"pending","title":"Notion: 회의록"}"#
+        let item = try #require(JarvisApproval.parse(item: Data(json.utf8)))
+        #expect(item.kindWord == "Notion·드라이브" && item.shortKind == "문서" && item.teamWord == "Notion·드라이브 팀")
+        #expect(item.needsHold && item.consequence.hasPrefix("Notion·드라이브에 그대로 써요"))
+    }
+
     @Test func outcomesAreSaidAsTheServerSaidThem() throws {
         let applied = try #require(JarvisApproval.parse(item: Data(decided(codeItem, status: "applied", word: "반영됨",
             outcome: #"{"merged":true,"pushed":false,"method":"fast-forward","push":"원격 저장소가 없어 push 하지 않았어요."}"#).utf8)))

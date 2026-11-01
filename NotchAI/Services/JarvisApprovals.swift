@@ -62,6 +62,7 @@ struct JarvisApproval: Identifiable, Equatable {
         case "mail_draft": "메일 초안"
         case "code_change": "코드 변경"
         case "dean_change": "DEAN 변경"
+        case "workspace_change": "Notion·드라이브"
         default: kind
         }
     }
@@ -72,6 +73,7 @@ struct JarvisApproval: Identifiable, Equatable {
         case "mail_draft": "메일"
         case "code_change": "코드"
         case "dean_change": "DEAN"
+        case "workspace_change": "문서"
         default: kind
         }
     }
@@ -81,6 +83,7 @@ struct JarvisApproval: Identifiable, Equatable {
         case "dev"?: "개발팀"
         case "secretary"?: "비서실"
         case "dean"?: "DEAN 팀"
+        case "workspace"?: "Notion·드라이브 팀"
         case let other?: other
         case nil: nil
         }
@@ -99,6 +102,8 @@ struct JarvisApproval: Identifiable, Equatable {
             return "\(name) \(base)에 합쳐요 · \(push)"
         case "dean_change":
             return "DEAN 파일에 그대로 써요 · 그새 바뀌었으면 쓰지 않아요"
+        case "workspace_change":
+            return "Notion·드라이브에 그대로 써요 · 쓴 뒤 다시 읽어 확인해요"
         default:
             return "데스크탑 Jarvis가 처리해요"
         }
