@@ -104,6 +104,9 @@ final class JarvisChat {
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     @ObservationIgnored private var warmed: String?
     @ObservationIgnored private var askedAt: Date?
+    /// A push-to-talk call is open (JarvisVoice): its turns are written into `lines` as they come,
+    /// so the history is not reloaded over them until the call ends.
+    @ObservationIgnored private(set) var voiceActive = false
 
     /// A stop this soon after asking is the same click landing twice, not a decision.
     static let stopGrace: TimeInterval = 1.5
@@ -129,7 +132,7 @@ final class JarvisChat {
 
     /// The panel opened: make sure today's conversation is loaded.
     func open(now: Date = .now) async {
-        guard jarvis.presence != nil, !isAnswering else { return }
+        guard jarvis.presence != nil, !isAnswering, !voiceActive else { return }
         if let lastLoad, now.timeIntervalSince(lastLoad) < Self.refreshAfter,
            conversationID == Self.reusable(stored: defaults?.string(forKey: Self.storeKey), today: Self.day(now)) {
             return
@@ -227,7 +230,7 @@ final class JarvisChat {
     private func follow(stream path: String, method: String, body: Data?) {
         guard let url = url(path) else { return }
         isAnswering = true
-        if lines.last?.role != .assistant || lines.last?.state != .streaming {
+        if lines.last?.role != .assistant || lines.last?.state != .streaming || lines.last?.id.hasPrefix(Self.voicePrefix) == true {
             lines.append(JarvisChatLine(id: UUID().uuidString, role: .assistant, text: "", state: .streaming))
         }
         let transport = jarvis.transport
@@ -304,6 +307,85 @@ final class JarvisChat {
         }
         notice = message
         isAnswering = false
+    }
+
+    // MARK: Voice (push-to-talk, 2026-11-01)
+
+    nonisolated static let voicePrefix = "voice-"
+
+    /// The conversation a call should join: today's notch conversation, created if there is none
+    /// yet (so voice and typing share one). Nil when the server could not make one; the call then
+    /// starts its own and `voiceStarted` adopts it.
+    func conversationForVoice(now: Date = .now) async -> String? {
+        if let id = Self.reusable(stored: defaults?.string(forKey: Self.storeKey), today: Self.day(now)) { return id }
+        return await create()
+    }
+
+    /// The call is connected to `id` (the server's word). Becomes the notch's conversation of the day.
+    func voiceStarted(conversation id: String) {
+        voiceActive = true
+        defaults?.set(Self.day() + "|" + id, forKey: Self.storeKey)
+        guard conversationID != id else { return }
+        conversationID = id
+        lines = []
+        notice = nil
+        warmed = nil
+    }
+
+    /// The call ended: the next look at the panel reloads the real history.
+    func voiceEnded() {
+        guard voiceActive else { return }
+        voiceActive = false
+        lastLoad = nil
+    }
+
+    /// What the server heard 동근님 say. Typed answers streaming at the same time keep the panel.
+    func voiceHeard(_ key: String, text: String) {
+        guard !isAnswering else { return }
+        let id = key + "-u"
+        if let index = lines.firstIndex(where: { $0.id == id }) {
+            lines[index].text = text
+        } else {
+            lines.append(JarvisChatLine(id: id, role: .user, text: text, state: .done))
+        }
+    }
+
+    func voiceStatus(_ key: String, text: String) {
+        guard let index = voiceAnswer(key) else { return }
+        lines[index].step = text.isEmpty ? nil : text
+    }
+
+    func voiceReplyDelta(_ key: String, text: String) {
+        guard let index = voiceAnswer(key) else { return }
+        lines[index].text += text
+        lines[index].step = nil
+    }
+
+    func voiceReplyDone(_ key: String, text: String?) {
+        guard let index = voiceAnswer(key) else { return }
+        if let text, !text.isEmpty { lines[index].text = text }
+        lines[index].state = .done
+        lines[index].step = nil
+    }
+
+    /// Jarvis was cut off. "continued": 동근님 had not finished, and the next heard line holds both
+    /// parts, so this turn's lines go.
+    func voiceInterrupted(_ key: String, continued: Bool) {
+        if continued {
+            lines.removeAll { $0.id == key + "-u" || $0.id == key + "-a" }
+        } else if let index = lines.firstIndex(where: { $0.id == key + "-a" }), lines[index].state == .streaming {
+            lines[index].state = .stopped
+            lines[index].step = nil
+        }
+    }
+
+    /// The answer line for a voice turn, made on its first word.
+    private func voiceAnswer(_ key: String) -> Int? {
+        guard !isAnswering else { return nil }
+        let id = key + "-a"
+        if let index = lines.firstIndex(where: { $0.id == id }) { return index }
+        lines.append(JarvisChatLine(id: id, role: .assistant, text: "", state: .streaming))
+        return lines.indices.last
     }
 
     private func url(_ path: String) -> URL? {

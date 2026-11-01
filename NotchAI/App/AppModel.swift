@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import os
 
 /// The recorder and Jarvis, which are always there, and the parts that can be switched on in the
 /// `…` menu: providers, the desk (music, clipboard, shelf, timer), the calendar, the launcher.
@@ -9,7 +10,7 @@ import Observation
 @Observable
 final class AppModel {
     let providers: [any AIProvider]
-    let desk = DeskModel()
+    let desk: DeskModel
     /// DEAN's schedule file (appointments, deadlines, Reminders to-dos) for the calendar.
     let schedule = ScheduleService()
     /// One-click openers: the sites in daily use and each project's own page.
@@ -19,6 +20,11 @@ final class AppModel {
     let jarvis: JarvisService
     let chat: JarvisChat
     let approvals: JarvisApprovals
+    /// Push-to-talk with Jarvis (2026-11-01): hold the light or the hold key.
+    let voice: JarvisVoice
+    /// Whether the hold key is in use, or why not (for the `…` menu).
+    private(set) var talkKeyOutcome: GlobalHoldHotKey.Outcome = .off
+    @ObservationIgnored private var talkKey: GlobalHoldHotKey?
     /// What is shown, and so what runs.
     let features: NotchFeatures
 
@@ -33,7 +39,9 @@ final class AppModel {
 
     /// A recording is on (or being checked or closed), or the last one failed and has not been
     /// dismissed: the wings widen for its clock or its warning. Otherwise they stay narrow.
-    var collapsedIsNarrow: Bool { !recorder.isBusy && !recorder.needsAttention && approvals.pill == nil }
+    var collapsedIsNarrow: Bool {
+        !recorder.isBusy && !recorder.needsAttention && approvals.pill == nil && !voice.showsInStrip
+    }
 
     var notchLayout: NotchLayout { Self.layout(features: features, jarvis: jarvis.isEnabled) }
 
@@ -44,11 +52,28 @@ final class AppModel {
          features: NotchFeatures = NotchFeatures()) {
         self.providers = providers
         self.features = features
+        let desk = DeskModel()
+        self.desk = desk
         let jarvis = JarvisService()
         self.jarvis = jarvis
         chat = JarvisChat(jarvis: jarvis)
         approvals = JarvisApprovals(jarvis: jarvis)
         jarvis.onApprovalCount = { [weak approvals] count in approvals?.countChanged(to: count) }
+        let holdKey = { JarvisTalkKey.current.combo?.flags ?? [] }
+        voice = JarvisVoice(jarvis: jarvis, chat: chat, isRecording: { [weak desk] in desk?.recorder.isBusy ?? false },
+                            modifiersDown: { NSEvent.modifierFlags.isSuperset(of: holdKey()) })
+    }
+
+    /// Registers the hold key while Jarvis has an address (called at start, and when the address or
+    /// the key changes). Without Jarvis the key is left to other apps.
+    func updateTalkKey() {
+        if talkKey == nil {
+            talkKey = GlobalHoldHotKey(onPress: { [weak self] in self?.voice.press(.hotKey) },
+                                       onRelease: { [weak self] in self?.voice.release(.hotKey) })
+        }
+        talkKeyOutcome = talkKey?.register(jarvis.isEnabled ? JarvisTalkKey.current.combo : nil) ?? .off
+        Logger(subsystem: "com.dongeun.NotchAI", category: "voice")
+            .info("talk key \(JarvisTalkKey.current.rawValue, privacy: .public): \(String(describing: self.talkKeyOutcome), privacy: .public)")
     }
 
     func start() {
@@ -56,6 +81,7 @@ final class AppModel {
         for feature in features.enabled { switched(feature, on: true, resize: false) }
         if !features.deskTabs.contains(desk.tab), let first = features.deskTabs.first { desk.tab = first }
         jarvis.start()   // polls on its own clock, with its own back-off
+        updateTalkKey()
         pollAll()
         let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pollAll() }

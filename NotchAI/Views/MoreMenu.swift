@@ -22,7 +22,20 @@ struct MoreMenu: View {
             Button(app.jarvis.isEnabled ? "Jarvis 주소… (\(app.jarvis.baseURL?.host ?? ""))" : "Jarvis 연결하기…") {
                 JarvisAddressPrompt.ask(app.jarvis)
                 app.resizePanels()
+                app.updateTalkKey()
                 NSApp.deactivate()
+            }
+            if app.jarvis.isEnabled {
+                Picker("말 걸기 단축키 (누르고 있는 동안)", selection: Binding(
+                    get: { JarvisTalkKey.current },
+                    set: { JarvisTalkKey.current = $0; app.updateTalkKey() })) {
+                    ForEach(JarvisTalkKey.allCases) { key in
+                        Text(key.label).tag(key)
+                    }
+                }
+                if app.talkKeyOutcome == .taken {
+                    Text("이 단축키는 다른 앱이 쓰고 있어요 · 다른 키를 골라 주세요")
+                }
             }
             Divider()
             if app.features.isOn(.agents),

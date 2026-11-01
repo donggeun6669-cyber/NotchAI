@@ -4,7 +4,7 @@ import Observation
 
 // Jarvis, the assistant on the always-on desktop (2026-11-01). Its job server is reachable only
 // inside the user's Tailscale network; the notch asks it what it is doing every few seconds and
-// shows only what it answers. Nothing here sends work to Jarvis: talking happens in its own app.
+// shows only what it answers. Talking is in JarvisChat (typed) and JarvisVoice (push-to-talk).
 
 /// What Jarvis says it is doing (`/presence` → `state`).
 enum JarvisState: Equatable {
@@ -312,15 +312,6 @@ struct URLSessionJarvisTransport: JarvisTransport {
     }
 }
 
-/// Push-to-talk, for when voice arrives (a later step). The section shows a talk button only when
-/// `JarvisService.voice` is set; nothing records audio until then.
-@MainActor
-protocol JarvisVoiceControl: AnyObject {
-    var isTalking: Bool { get }
-    func startTalking()
-    func stopTalking()
-}
-
 /// Polls Jarvis and keeps what the notch shows: the connection, its state, the latest jobs.
 @MainActor
 @Observable
@@ -337,8 +328,6 @@ final class JarvisService {
     /// When the server last answered.
     private(set) var lastAnswer: Date?
     private(set) var backoff = JarvisBackoff()
-    /// The push-to-talk hook. Nil until voice exists.
-    var voice: (any JarvisVoiceControl)?
     /// Called when the number of waiting 결재 items changes (the 결재 panel reads the list then).
     @ObservationIgnored var onApprovalCount: ((Int) -> Void)?
     @ObservationIgnored private var lastApprovalCount: Int?

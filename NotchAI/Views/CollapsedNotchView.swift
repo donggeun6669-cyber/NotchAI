@@ -27,23 +27,31 @@ struct CollapsedNotchView: View {
 
             HStack(spacing: 5) {
                 if agents { character(app.provider(.gpt)) }
-                if let pill = app.approvals.pill, !narrow {
+                if app.voice.showsInStrip, !narrow {
+                    // A call in progress (or a word about why not) outranks the pill and the meter.
+                    VoiceTag(voice: app.voice)
+                } else if let pill = app.approvals.pill, !narrow {
                     ApprovalPill(pill: pill) { app.approvals.open() }
                 } else if !narrow, mark.showsLevel {
                     LevelMeter(level: app.recorder.level)
                         .help("입력 레벨")
                 }
-                if let jarvis = JarvisOrbState(app.jarvis.connection) {
+                if let base = JarvisOrbState(app.jarvis.connection) {
+                    let jarvis = app.voice.orbState(over: base)
                     JarvisOrbView(state: jarvis, size: JarvisOrbLayout.collapsedSize)
                         .frame(width: JarvisOrbLayout.collapsedSize, height: JarvisOrbLayout.collapsedSize)
                         .overlay(alignment: .topTrailing) {
                             // Something waits for a decision: the one red mark beside the notch.
-                            if (app.jarvis.presence?.approvals ?? 0) > 0 {
+                            if (app.jarvis.presence?.approvals ?? 0) > 0, app.voice.phase == .idle {
                                 Circle().fill(StudioTheme.red).frame(width: 5, height: 5).offset(x: 2, y: -2)
                             }
                         }
+                        // Hold the light to talk (a bigger target than the 10pt light).
+                        .frame(width: JarvisOrbLayout.holdTarget, height: height)
+                        .holdToTalk(app.voice)
                         .help("Jarvis: \(JarvisOrbLayout.word(jarvis))"
-                              + ((app.jarvis.presence?.approvals ?? 0) > 0 ? " · 결재 \(app.jarvis.presence?.approvals ?? 0)건" : ""))
+                              + ((app.jarvis.presence?.approvals ?? 0) > 0 ? " · 결재 \(app.jarvis.presence?.approvals ?? 0)건" : "")
+                              + " · 꾹 누른 채 말하기")
                 }
             }
             .frame(width: wingWidth)
@@ -247,6 +255,8 @@ enum IdleNote {
 /// The Jarvis light beside the notch: small enough to share the 32pt wing with a character.
 enum JarvisOrbLayout {
     static let collapsedSize: CGFloat = 10
+    /// Where a press counts as holding the light: wider than the light, the strip's full height.
+    static let holdTarget: CGFloat = 18
 
     static func word(_ state: JarvisOrbState) -> String {
         switch state {

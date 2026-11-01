@@ -3,11 +3,13 @@ import SwiftUI
 
 /// Jarvis in the open notch (2026-11-01), where the calendar used to be: its light and state, the
 /// jobs it is running, and a conversation — type, and the answer streams in as Jarvis writes it,
-/// with the tool it is using shown while it works. 「앱에서 열기」 opens the full app. A talk
-/// button appears beside it once voice exists (`JarvisService.voice`).
+/// with the tool it is using shown while it works. 「앱에서 열기」 opens the full app. Or hold the
+/// light or the microphone and talk (push-to-talk, `JarvisVoice`): what Jarvis heard and its answer
+/// appear in the same conversation, and Jarvis says the answer aloud.
 struct JarvisPane: View {
     let jarvis: JarvisService
     @Bindable var chat: JarvisChat
+    let voice: JarvisVoice
     /// The 결재함; the yellow line opens its panel beside the notch.
     let approvals: JarvisApprovals
     /// The notch must stay open while the question is being typed.
@@ -30,23 +32,21 @@ struct JarvisPane: View {
     private var header: some View {
         HStack(spacing: 7) {
             if let orb = JarvisOrbState(jarvis.connection) {
-                JarvisOrbView(state: orb, size: 14)
+                JarvisOrbView(state: voice.orbState(over: orb), size: 14)
                     .frame(width: 14, height: 14)
+                    .frame(width: 22, height: 22)
+                    .holdToTalk(voice)
+                    .help(VoiceWords.help(voice.phase))
             }
             Text("Jarvis")
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(JarvisOrbView.blue.opacity(jarvis.presence == nil ? 0.55 : 1))
-            Text(chat.isAnswering ? "답하는 중" : Self.stateLine(jarvis.connection))
+            Text(voice.phase != .idle ? Self.voiceWord(voice.phase)
+                 : chat.isAnswering ? "답하는 중" : Self.stateLine(jarvis.connection))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(stateColor)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            if let voice = jarvis.voice {
-                // Push-to-talk lands here with the voice step.
-                headerButton(voice.isTalking ? "mic.fill" : "mic", help: "Jarvis에게 말하기") {
-                    voice.isTalking ? voice.stopTalking() : voice.startTalking()
-                }
-            }
             headerButton("square.and.pencil", help: "새 대화 (노치 대화는 하루 동안 이어집니다)") {
                 chat.newConversation()
             }
@@ -84,6 +84,15 @@ struct JarvisPane: View {
         .help(help)
     }
 
+    static func voiceWord(_ phase: JarvisVoice.Phase) -> String {
+        switch phase {
+        case .holding: "듣는 중 · 다 말하면 떼세요"
+        case .waiting: "생각 중"
+        case .speaking: "말하는 중"
+        case .idle: ""
+        }
+    }
+
     /// "작업 중 · 진행 2 · 대기 1", "쉬는 중", "연결 안 됨".
     static func stateLine(_ connection: JarvisConnection) -> String {
         switch connection {
@@ -100,7 +109,8 @@ struct JarvisPane: View {
     }
 
     private var stateColor: Color {
-        if chat.isAnswering { return JarvisOrbView.blue.opacity(0.9) }
+        if voice.phase == .holding { return StudioTheme.notch.text }
+        if chat.isAnswering || voice.phase != .idle { return JarvisOrbView.blue.opacity(0.9) }
         switch jarvis.connection {
         case .online(let presence) where presence.shownState == .needsApproval:
             return Color(nsColor: CharacterState.attentionYellow)
@@ -224,16 +234,25 @@ struct JarvisPane: View {
 
     private var input: some View {
         VStack(alignment: .leading, spacing: 3) {
-            if let notice = chat.notice {
+            if let notice = voice.notice?.text {
+                // A word from push-to-talk (recording, permission, …): never red, only the held dot is.
+                Text(notice)
+                    .font(StudioTheme.font(10, .medium))
+                    .foregroundStyle(StudioTheme.notch.secondary)
+                    .lineLimit(2)
+            } else if let notice = chat.notice {
                 Text(notice)
                     .font(.system(size: 9.5, weight: .medium))
                     .foregroundStyle(NotchPalette.red.opacity(0.95))
                     .lineLimit(2)
             }
             HStack(spacing: 6) {
+                HoldToTalkButton(voice: voice)
+                    .padding(.leading, -6)
                 JarvisInputField(
                     text: $chat.draft,
-                    placeholder: jarvis.presence == nil ? "Jarvis에 연결되면 말할 수 있어요" : "Jarvis에게 말하기",
+                    placeholder: voice.phase == .holding ? "듣고 있어요 · 다 말하면 떼세요"
+                        : jarvis.presence == nil ? "Jarvis에 연결되면 말할 수 있어요" : "Jarvis에게 말하기",
                     isEnabled: jarvis.presence != nil,
                     onSubmit: { chat.send($0) },
                     onFocusChange: { typing in

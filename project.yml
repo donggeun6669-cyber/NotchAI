@@ -25,7 +25,7 @@ targets:
         LSMinimumSystemVersion: "26.0"
         LSUIElement: true            # no Dock icon, no menu bar; lives in the notch only
         NSAppleEventsUsageDescription: "지금 재생 중인 음악과 크롬에서 보고 있는 페이지를 읽기 위해 사용합니다."
-        NSMicrophoneUsageDescription: "강의실 등 주변 소리를 녹음하기 위해 사용합니다."
+        NSMicrophoneUsageDescription: "강의실 소리를 녹음할 때와, Jarvis에게 말을 걸 때(누르고 있는 동안)만 마이크를 써요."
         NSRemindersFullAccessUsageDescription: "노치 달력의 오늘 할 일을 미리 알림 「오늘 할 일」 목록에서 바로 읽습니다. 할 일은 이 맥 밖으로 나가지 않습니다."
         NSRemindersUsageDescription: "노치 달력의 오늘 할 일을 미리 알림 「오늘 할 일」 목록에서 바로 읽습니다. 할 일은 이 맥 밖으로 나가지 않습니다."
         NSHumanReadableCopyright: ""
@@ -153,6 +153,11 @@ targets:
           - "Views/CollapsedNotchView.swift"
           - "Views/ExpandedNotchView.swift"
           - "Views/MoreMenu.swift"
+          - "Services/JarvisVoice.swift"
+          - "Services/JarvisVoiceIO.swift"
+          - "Services/JarvisVoiceWire.swift"
+          - "Services/GlobalHoldHotKey.swift"
+          - "Views/JarvisVoiceViews.swift"
       - path: NotchDesk
         excludes:
           - "Distribution/**"

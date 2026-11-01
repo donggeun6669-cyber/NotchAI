@@ -67,7 +67,7 @@ else
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>LSUIElement</key><true/>
 <key>NSAppleEventsUsageDescription</key><string>지금 재생 중인 음악과 크롬에서 보고 있는 페이지를 읽기 위해 사용합니다.</string>
-<key>NSMicrophoneUsageDescription</key><string>강의실 등 주변 소리를 녹음하기 위해 사용합니다.</string>
+<key>NSMicrophoneUsageDescription</key><string>강의실 소리를 녹음할 때와, Jarvis에게 말을 걸 때(누르고 있는 동안)만 마이크를 써요.</string>
 <key>NSRemindersFullAccessUsageDescription</key><string>노치 달력의 오늘 할 일을 미리 알림 「오늘 할 일」 목록에서 바로 읽습니다. 할 일은 이 맥 밖으로 나가지 않습니다.</string>
 <key>NSRemindersUsageDescription</key><string>노치 달력의 오늘 할 일을 미리 알림 「오늘 할 일」 목록에서 바로 읽습니다. 할 일은 이 맥 밖으로 나가지 않습니다.</string>
 </dict></plist>
