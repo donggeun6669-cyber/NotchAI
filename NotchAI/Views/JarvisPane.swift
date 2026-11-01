@@ -14,6 +14,14 @@ struct JarvisPane: View {
     let approvals: JarvisApprovals
     /// The notch must stay open while the question is being typed.
     var onFocusChange: (Bool) -> Void = { _ in }
+    /// The cursor is in the question field. Alone it does not hold the notch open: the field keeps
+    /// focus after Return, and the notch then never closed again (2026-11-01, 동근님).
+    @State private var fieldFocused = false
+
+    /// Hold the notch open only while there is an unsent question in the focused field.
+    nonisolated static func holdsNotchOpen(focused: Bool, draft: String) -> Bool {
+        focused && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -24,7 +32,12 @@ struct JarvisPane: View {
                 .frame(maxHeight: .infinity)
             input
         }
-        .onDisappear { onFocusChange(false) }
+        .onChange(of: chat.draft) { updateHold() }
+        .onDisappear { fieldFocused = false; onFocusChange(false) }
+    }
+
+    private func updateHold() {
+        onFocusChange(Self.holdsNotchOpen(focused: fieldFocused, draft: chat.draft))
     }
 
     // MARK: Header
@@ -255,9 +268,10 @@ struct JarvisPane: View {
                         : jarvis.presence == nil ? "Jarvis에 연결되면 말할 수 있어요" : "Jarvis에게 말하기",
                     isEnabled: jarvis.presence != nil,
                     onSubmit: { chat.send($0) },
-                    onFocusChange: { typing in
-                        onFocusChange(typing)
-                        if typing { chat.warm() }
+                    onFocusChange: { focused in
+                        fieldFocused = focused
+                        updateHold()
+                        if focused { chat.warm() }
                     })
                 // Stop lives with the answer, never where Send was: a single click once sent a
                 // question and stopped it, because Stop took Send's place under the pointer.

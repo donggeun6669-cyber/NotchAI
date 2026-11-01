@@ -240,3 +240,12 @@ struct JarvisChatTests {
 extension FakeChatServer {
     func setAnswer(_ key: String, _ status: Int, _ body: String) { answers[key] = (status, body) }
 }
+
+/// The cursor left in the question field must not hold the notch open forever (2026-11-01):
+/// only an unsent question does.
+@Test func notchHeldOpenOnlyWithUnsentQuestion() {
+    #expect(JarvisPane.holdsNotchOpen(focused: true, draft: "내일 일정") == true)
+    #expect(JarvisPane.holdsNotchOpen(focused: true, draft: "") == false)        // after Return
+    #expect(JarvisPane.holdsNotchOpen(focused: true, draft: "  \n") == false)
+    #expect(JarvisPane.holdsNotchOpen(focused: false, draft: "내일 일정") == false)
+}

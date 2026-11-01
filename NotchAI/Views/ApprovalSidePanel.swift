@@ -139,6 +139,14 @@ private struct ApprovalCard: View {
     @Bindable var approvals: JarvisApprovals
     let palette: StudioTheme.Palette
     let onFocusChange: (Bool) -> Void
+    /// The cursor is in the note field: holds the notch open only with a note in it (as in JarvisPane).
+    @State private var noteFocused = false
+
+    private var note: String { approvals.notes[item.id] ?? "" }
+
+    private func updateHold() {
+        onFocusChange(JarvisPane.holdsNotchOpen(focused: noteFocused, draft: note))
+    }
 
     // Kept in the model so the measuring copy of the panel opens the same things.
     private var showsDiff: Bool { approvals.openDiffs.contains(item.id) }
@@ -210,10 +218,10 @@ private struct ApprovalCard: View {
     private var actions: some View {
         VStack(alignment: .leading, spacing: 8) {
             if writesNote {
-                JarvisInputField(text: Binding(get: { approvals.notes[item.id] ?? "" },
-                                               set: { approvals.notes[item.id] = $0 }),
+                JarvisInputField(text: Binding(get: { note },
+                                               set: { approvals.notes[item.id] = $0; updateHold() }),
                                  placeholder: "메모 (결정과 함께 남아요)", isEnabled: true,
-                                 onSubmit: { _ in }, onFocusChange: onFocusChange,
+                                 onSubmit: { _ in }, onFocusChange: { noteFocused = $0; updateHold() },
                                  textColor: NSColor(palette.text), placeholderColor: NSColor(palette.muted),
                                  font: StudioTheme.nsFont(11.5))
                     .frame(height: 18)
