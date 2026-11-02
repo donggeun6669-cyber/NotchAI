@@ -13,6 +13,7 @@ struct NotchView: View {
         // The island floats, so it has no ears growing out of the screen edge.
         let ear = geometry.isIsland ? 0 : NotchGeometry.earRadius
         let compact = !model.isExpanded && model.isCompact()
+        let clock = !model.isExpanded && model.isClock()
 
         ZStack(alignment: .top) {
             Group {
@@ -35,7 +36,7 @@ struct NotchView: View {
                 // The open panel keeps the same strip on top, so a running clock stays in place.
                 let narrow = model.isCompact()
                 CollapsedNotchView(app: app, notchWidth: geometry.notchRect.width, height: geometry.notchHeight,
-                                   wingWidth: narrow ? geometry.layout.narrowWing : geometry.layout.wideWing,
+                                   wingWidth: model.currentWing,
                                    narrow: narrow)
                 if model.isExpanded {
                     ExpandedNotchView(app: app, notch: model)
@@ -60,6 +61,7 @@ struct NotchView: View {
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.86), value: model.isExpanded)
         .animation(.spring(response: 0.4, dampingFraction: 0.9), value: compact)
+        .animation(.spring(response: 0.4, dampingFraction: 0.9), value: clock)
         .frame(width: geometry.windowFrame.width, height: geometry.windowFrame.height, alignment: .top)
         .environment(\.colorScheme, .dark)
     }

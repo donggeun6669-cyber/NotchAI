@@ -134,6 +134,7 @@ final class NotchWindowController {
         // Narrow unless the app has something that needs words (2026-10-19, 동근님: 「괜히 길어지면
         // 불편」): in NotchAI only a recording's clock or a failed recording (2026-11-01).
         model.isCompact = { [app] in app.collapsedIsNarrow }
+        model.isClock = { [app] in app.collapsedIsClock }
 
         let hosting = NSHostingView(rootView: NotchView(model: model, app: app))
         hosting.sizingOptions = []         // the window frame comes from NotchGeometry, not SwiftUI

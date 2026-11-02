@@ -21,6 +21,8 @@ final class NotchViewModel {
     /// Whether the collapsed notch should shrink to just the character (agent idle).
     /// A closure so SwiftUI tracks the agent state it reads.
     @ObservationIgnored var isCompact: () -> Bool = { false }
+    /// Whether the wings hold only a recording's clock and meter, which need less than words do.
+    @ObservationIgnored var isClock: () -> Bool = { false }
     /// A panel shown beside the open notch (NotchAI's 결재): the mouse over it keeps the notch open.
     @ObservationIgnored var besideRect: CGRect?
 
@@ -32,7 +34,14 @@ final class NotchViewModel {
 
     var currentSize: CGSize {
         if isExpanded { return geometry.expandedSize }
-        return isCompact() ? geometry.compactCollapsedSize : geometry.collapsedSize
+        if isCompact() { return geometry.compactCollapsedSize }
+        return isClock() ? geometry.clockCollapsedSize : geometry.collapsedSize
+    }
+
+    /// Each wing's width in the strip, open or closed.
+    var currentWing: CGFloat {
+        if isCompact() { return geometry.layout.narrowWing }
+        return isClock() ? geometry.layout.clockWing : geometry.layout.wideWing
     }
 
     func expand() {
@@ -63,7 +72,8 @@ final class NotchViewModel {
     @discardableResult
     func updateMouse(_ point: CGPoint) -> Bool {
         let beside = isExpanded ? besideRect.map { $0.insetBy(dx: -14, dy: -6).contains(point) } ?? false : false
-        let inside = beside || geometry.hitRect(expanded: isExpanded, compact: !isExpanded && isCompact())
+        let inside = beside || geometry.hitRect(expanded: isExpanded, compact: !isExpanded && isCompact(),
+                                                  clock: !isExpanded && isClock())
             .insetBy(dx: -4, dy: -4).contains(point)
         guard inside != isHovering else { return inside }
         isHovering = inside

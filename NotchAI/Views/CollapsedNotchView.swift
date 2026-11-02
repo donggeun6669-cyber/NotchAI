@@ -4,7 +4,8 @@ import SwiftUI
 /// right. Nothing is drawn in the middle because the hardware notch covers it. Narrow (a mark each)
 /// until a recording runs or fails; then the wings widen for its clock and input level, or for the
 /// failure — which stays until it is dismissed, because a silent first attempt once passed
-/// unnoticed. Claude and GPT join the wings when they are switched on.
+/// unnoticed. Only the 결재 pill and Jarvis's words take the full width (2026-11-02).
+/// Claude and GPT join the wings when they are switched on.
 /// Also the header row of the open panel, so the transition stays continuous.
 struct CollapsedNotchView: View {
     let app: AppModel
@@ -146,7 +147,7 @@ enum RecordingMark: Equatable {
     }
 }
 
-private struct RecordingMarkView: View {
+struct RecordingMarkView: View {
     let mark: RecordingMark
     let narrow: Bool
 

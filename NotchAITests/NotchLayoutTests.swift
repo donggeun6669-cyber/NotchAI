@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import NotchAI
 
@@ -70,6 +71,51 @@ struct PanelLayoutTests {
         let layout = AppModel.layout(features: features, jarvis: true)
         #expect(layout.narrowWing > NotchGeometry.compactWingWidth)
         #expect(layout.wideWing > layout.narrowWing)
+        #expect(layout.clockWing > layout.narrowWing)
+        #expect(layout.clockWing < layout.wideWing)
+    }
+
+    /// 「오른쪽에 온도 안 가리게」: a recording's wings are narrower than the wings for words.
+    @Test func aRecordingAloneUsesTheClockWing() {
+        let macBookPro14 = NotchGeometry(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                         safeAreaTop: 32, leftAuxiliaryWidth: 665, rightAuxiliaryWidth: 662,
+                                         menuBarHeight: 32)
+        let model = NotchViewModel(geometry: macBookPro14)
+        #expect(model.currentSize == macBookPro14.collapsedSize)
+        #expect(model.currentWing == NotchGeometry.wingWidth)
+
+        model.isClock = { true }
+        #expect(model.currentSize == macBookPro14.clockCollapsedSize)
+        #expect(model.currentWing == NotchGeometry.clockWingWidth)
+        #expect(macBookPro14.clockCollapsedSize.width < macBookPro14.collapsedSize.width)
+        // The mouse only opens the notch over what is drawn.
+        let cut = macBookPro14.hitRect(expanded: false)
+        let wingPoint = CGPoint(x: cut.maxX - 5, y: cut.midY)
+        #expect(!macBookPro14.hitRect(expanded: false, clock: true).contains(wingPoint))
+
+        // Nothing to say beats the clock wing.
+        model.isCompact = { true }
+        #expect(model.currentSize == macBookPro14.compactCollapsedSize)
+        #expect(model.currentWing == NotchGeometry.compactWingWidth)
+    }
+
+    /// The strip clips, so the longest things a recording's wings hold must fit them.
+    @Test func theClockWingHoldsTheRecordersLongestWords() throws {
+        func width(_ mark: RecordingMark) throws -> CGFloat {
+            let renderer = ImageRenderer(content: RecordingMarkView(mark: mark, narrow: false))
+            return try #require(renderer.nsImage).size.width
+        }
+        let wing = NotchGeometry.clockWingWidth
+        #expect(try width(.recording(seconds: 35_999, alarm: true)) <= wing)
+        #expect(try width(.checking(secondsLeft: 3)) <= wing)
+        #expect(try width(.finishing) <= wing)
+        for words in ["녹음 안 됨", "권한 없음", "저장 밀림", "파일 확인", "녹음 실패"] {
+            #expect(try width(.failed(words)) <= wing)
+        }
+
+        let meter = ImageRenderer(content: LevelMeter(level: 1))
+        let meterWidth = try #require(meter.nsImage).size.width
+        #expect(meterWidth + 5 + JarvisOrbLayout.holdTarget <= wing)
     }
 
     @Test func geometryFollowsTheLayout() {

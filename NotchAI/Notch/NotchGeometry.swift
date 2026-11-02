@@ -5,7 +5,9 @@ import AppKit
 struct NotchLayout: Equatable {
     /// Each wing beside the notch when there is nothing to say.
     var narrowWing: CGFloat = NotchGeometry.compactWingWidth
-    /// Each wing when there is (a recording clock, status words).
+    /// Each wing for a recording's clock and meter alone: the menu bar's items stay readable.
+    var clockWing: CGFloat = NotchGeometry.clockWingWidth
+    /// Each wing when there are words to fit (status words, the 결재 pill).
     var wideWing: CGFloat = NotchGeometry.wingWidth
     /// The open panel below the notch row.
     var body = CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight)
@@ -18,6 +20,8 @@ struct NotchGeometry: Equatable {
     static let wingWidth: CGFloat = 112
     /// Narrower wings while the agent is idle: just room for the character.
     static let compactWingWidth: CGFloat = 32
+    /// Room for 「9:59:59」 and the input meter, and not for the menu bar's temperature (2026-11-02).
+    static let clockWingWidth: CGFloat = 84
     /// Small outward curve where the panel meets the top edge of the screen.
     static let earRadius: CGFloat = 6
     /// Extra room around the panel so the expanded shadow is not clipped.
@@ -89,6 +93,10 @@ struct NotchGeometry: Equatable {
         CGSize(width: notchRect.width + layout.narrowWing * 2, height: notchHeight)
     }
 
+    var clockCollapsedSize: CGSize {
+        CGSize(width: notchRect.width + layout.clockWing * 2, height: notchHeight)
+    }
+
     var expandedSize: CGSize {
         var width = max(layout.body.width, collapsedSize.width)
         // A portrait display is narrower than the panel wants to be.
@@ -123,8 +131,10 @@ struct NotchGeometry: Equatable {
     }
 
     /// Area (global coordinates) that reacts to the mouse in each state.
-    func hitRect(expanded: Bool, compact: Bool = false) -> CGRect {
-        let size = expanded ? expandedSize : (compact ? compactCollapsedSize : collapsedSize)
+    func hitRect(expanded: Bool, compact: Bool = false, clock: Bool = false) -> CGRect {
+        let size = expanded ? expandedSize
+            : compact ? compactCollapsedSize
+            : clock ? clockCollapsedSize : collapsedSize
         return CGRect(x: notchRect.midX - size.width / 2, y: screenFrame.maxY - size.height,
                       width: size.width, height: size.height)
     }

@@ -43,6 +43,12 @@ final class AppModel {
         !recorder.isBusy && !recorder.needsAttention && approvals.pill == nil && !voice.showsInStrip
     }
 
+    /// The recorder is all the wings have to show: narrower, so the menu bar's temperature stays
+    /// readable (2026-11-02). The 결재 pill and Jarvis's words still get the full width.
+    var collapsedIsClock: Bool {
+        !collapsedIsNarrow && approvals.pill == nil && !voice.showsInStrip
+    }
+
     var notchLayout: NotchLayout { Self.layout(features: features, jarvis: jarvis.isEnabled) }
 
     @ObservationIgnored private var pollTimer: Timer?
@@ -147,6 +153,7 @@ final class AppModel {
         let agents = features.isOn(.agents)
         // The characters share the wings with the recorder's mark and Jarvis's light.
         var layout = NotchLayout(narrowWing: agents ? 54 : NotchGeometry.compactWingWidth,
+                                 clockWing: agents ? 102 : NotchGeometry.clockWingWidth,
                                  wideWing: agents ? 130 : 112, body: panelSize)
         if !jarvis && !features.hasLeftColumn {
             let gap = sectionSpacing * 2 + 1
