@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 import Observation
@@ -145,6 +146,12 @@ final class RecorderService: NSObject {
     private(set) var phase: Phase = .idle
     private(set) var startedAt: Date?
     private(set) var elapsed: TimeInterval = 0
+    /// Time the Mac spent asleep (lid closed) during the current or last take. Nothing can be
+    /// captured then, so it is not missing file time: the clock, the falling-behind check and the
+    /// final check all leave it out. 2026-11-02: the lid closed twice in class (17 minutes) and a
+    /// file holding everything that could be recorded was flagged "파일 확인".
+    private(set) var sleptSeconds: TimeInterval = 0
+    private var asleepSince: Date?
     /// 0…1 from the input, so silence is visible while it happens.
     private(set) var level: Double = 0
     /// Highest level seen during the three-second input check. Judging one instant caused false
@@ -225,6 +232,11 @@ final class RecorderService: NSObject {
             mode = Mode(rawValue: saved) ?? (saved == "mic" ? .classroom : .onlineSpeakers)
         }
         microphoneUID = UserDefaults.standard.string(forKey: Self.micKey)
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(macWillSleep),
+                              name: NSWorkspace.willSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(macDidWake),
+                              name: NSWorkspace.didWakeNotification, object: nil)
         // A crash could have left devices behind, and the Mac listening through one of them.
         AudioDevices.removeStaleAggregates()
         restoreOutputAfterCrash()
@@ -285,6 +297,28 @@ final class RecorderService: NSObject {
 
     private var usesSystemTap: Bool { macSound == .systemTap && mode.usesLoopback }
 
+    @objc private func macWillSleep(_ note: Notification) { noteSleep() }
+    @objc private func macDidWake(_ note: Notification) { noteWake() }
+
+    func noteSleep(at date: Date = .now) {
+        guard startedAt != nil, asleepSince == nil else { return }
+        asleepSince = date
+    }
+
+    func noteWake(at date: Date = .now) {
+        guard let since = asleepSince else { return }
+        asleepSince = nil
+        sleptSeconds += max(0, date.timeIntervalSince(since))
+        silentSince = nil   // the dead air while asleep says nothing about the input
+    }
+
+    /// Seconds the take has been able to record: wall time minus the time the Mac slept.
+    nonisolated static func recordingSeconds(startedAt: Date, now: Date, slept: TimeInterval,
+                                             asleepSince: Date?) -> TimeInterval {
+        let asleepNow = asleepSince.map { max(0, now.timeIntervalSince($0)) } ?? 0
+        return max(0, now.timeIntervalSince(startedAt) - slept - asleepNow)
+    }
+
     /// "알겠어요" on a failure: it has been seen.
     func dismissTrouble() {
         guard phase == .idle else { return }
@@ -329,7 +363,8 @@ final class RecorderService: NSObject {
     @discardableResult
     func stop(now: Date = .now) -> Take? {
         guard let startedAt, pendingURL != nil, let finalURL = pendingFinalURL else { return nil }
-        let seconds = Int(now.timeIntervalSince(startedAt))
+        let seconds = Int(Self.recordingSeconds(startedAt: startedAt, now: now, slept: sleptSeconds,
+                                                asleepSince: asleepSince))
         guard phase != .finishing else { return pendingTake }
         let take = Take(url: finalURL, startedAt: startedAt, seconds: seconds)
         pendingTake = take
@@ -360,7 +395,8 @@ final class RecorderService: NSObject {
             level = Self.level(fromDecibels: Double(decibels))
             if phase == .checkingInput { startupPeakLevel = max(startupPeakLevel, level) }
         }
-        let seconds = Date.now.timeIntervalSince(startedAt)
+        let seconds = Self.recordingSeconds(startedAt: startedAt, now: .now, slept: sleptSeconds,
+                                            asleepSince: asleepSince)
         if Int(seconds) != Int(elapsed) { elapsed = seconds }
 
         // Compare wall time with what the capture output says it has actually written. This catches
@@ -430,6 +466,8 @@ final class RecorderService: NSObject {
             pendingURL = url
             pendingFinalURL = finalURL
             startedAt = .now
+            sleptSeconds = 0
+            asleepSince = nil
             phase = .checkingInput
             elapsed = 0
             level = 0
@@ -479,6 +517,8 @@ final class RecorderService: NSObject {
             pendingURL = url
             pendingFinalURL = finalURL
             startedAt = .now
+            sleptSeconds = 0
+            asleepSince = nil
             phase = .checkingInput
             elapsed = 0
             level = 0
@@ -636,6 +676,7 @@ final class RecorderService: NSObject {
         systemCapture = nil
         teardownDevices()
         startedAt = nil
+        asleepSince = nil
         pendingURL = nil
         pendingFinalURL = nil
         pendingTake = nil

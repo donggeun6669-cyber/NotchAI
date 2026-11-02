@@ -211,4 +211,28 @@ struct RecorderTests {
         #expect(RecorderService.recoveryURL(for: original).lastPathComponent
                 == "lecture_확인필요_2.m4a")
     }
+
+    @Test func timeTheMacSleptIsNotMissingFileTime() {
+        // 2026-11-02: 09:09–10:33 with the lid closed 537 s + 499 s; the file held 3,996 s.
+        let start = Date(timeIntervalSince1970: 0)
+        let end = start.addingTimeInterval(5_028)
+        let seconds = RecorderService.recordingSeconds(startedAt: start, now: end, slept: 1_036,
+                                                       asleepSince: nil)
+        #expect(Int(seconds) == 3_992)
+        let check = RecordingCheck(expectedSeconds: Int(seconds), fileSeconds: 3_996,
+                                   meanDecibels: -30, peakDecibels: -5, problems: [])
+        #expect(check.isClean)
+        // Still asleep: the time since it fell asleep is left out too.
+        #expect(RecorderService.recordingSeconds(startedAt: start, now: start.addingTimeInterval(100),
+                                                 slept: 0, asleepSince: start.addingTimeInterval(40)) == 40)
+    }
+
+    @MainActor
+    @Test func sleepOnlyCountsWhileRecording() {
+        let recorder = RecorderService(folder: FileManager.default.temporaryDirectory
+            .appendingPathComponent("RecorderTests-\(UUID().uuidString)"))
+        recorder.noteSleep(at: .now)
+        recorder.noteWake(at: .now.addingTimeInterval(600))
+        #expect(recorder.sleptSeconds == 0)
+    }
 }

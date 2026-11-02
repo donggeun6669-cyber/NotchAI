@@ -289,6 +289,9 @@ struct RecordPanel: View {
                 .font(.system(size: 8.5))
                 .foregroundStyle(.white.opacity(0.32))
                 .monospacedDigit()
+                .help(recorder.sleptSeconds >= 60
+                      ? "맥이 잠든 \(RecordingCheck.duration(Int(recorder.sleptSeconds)))은 녹음되지 않아 빼고 셌습니다"
+                      : "녹음한 시간 · 파일 길이")
         }
     }
 
