@@ -112,6 +112,8 @@ struct RecordingCheckTests {
         // The lost lecture measured -91 dB. Anything at or below that has to trip the check.
         #expect(RecordingCheck.silenceCeiling > -91)
         #expect(RecordingCheck.silenceCeiling < RecordingCheck.quietCeiling)
+        // A real classroom lecture with a complete transcript measured -48.1 dB (2026-10-29).
+        #expect(RecordingCheck.quietCeiling < -48.1)
     }
 
     @Test func amplitudeConvertsToDecibelsWithAFloor() {

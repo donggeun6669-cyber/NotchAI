@@ -58,8 +58,10 @@ struct RecordingCheck: Equatable, Sendable {
     /// Below this the file is silence. A truly empty AAC file measures about -91 dB, which is
     /// exactly what the lost lecture measured.
     static let silenceCeiling: Double = -80
-    /// Below this there is signal, but not enough for a transcript to be reliable.
-    static let quietCeiling: Double = -45
+    /// Below this there is signal, but not enough for a transcript to be reliable. It was -45, and
+    /// classroom lectures measuring -47 to -48 dB were flagged "파일 확인" while their transcripts
+    /// came out complete (2026-10-29, 2026-10-30, 2026-11-02: 3 of the last 14 files).
+    static let quietCeiling: Double = -55
     /// A file may fall this far short of the clock before it counts as truncated; encoders
     /// legitimately drop a fraction of a second at the end.
     static let allowedGapSeconds = 2
