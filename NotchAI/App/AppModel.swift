@@ -153,7 +153,7 @@ final class AppModel {
         let agents = features.isOn(.agents)
         // The characters share the wings with the recorder's mark and Jarvis's light.
         var layout = NotchLayout(narrowWing: agents ? 54 : NotchGeometry.compactWingWidth,
-                                 clockWing: agents ? 102 : NotchGeometry.clockWingWidth,
+                                 clockWing: agents ? 96 : NotchGeometry.clockWingWidth,
                                  wideWing: agents ? 130 : 112, body: panelSize)
         if !jarvis && !features.hasLeftColumn {
             let gap = sectionSpacing * 2 + 1

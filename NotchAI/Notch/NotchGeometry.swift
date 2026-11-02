@@ -20,8 +20,9 @@ struct NotchGeometry: Equatable {
     static let wingWidth: CGFloat = 112
     /// Narrower wings while the agent is idle: just room for the character.
     static let compactWingWidth: CGFloat = 32
-    /// Room for 「9:59:59」 and the input meter, and not for the menu bar's temperature (2026-11-02).
-    static let clockWingWidth: CGFloat = 84
+    /// Room for 「9:59:59」 and the input meter, stopping short of the menu bar's temperature even
+    /// at three digits: 「92°」 starts 96pt past the notch on the 14" screen (2026-11-02).
+    static let clockWingWidth: CGFloat = 78
     /// Small outward curve where the panel meets the top edge of the screen.
     static let earRadius: CGFloat = 6
     /// Extra room around the panel so the expanded shadow is not clipped.
