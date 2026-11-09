@@ -62,6 +62,8 @@ final class NotchWindowController {
     private var mouseInterval: TimeInterval = 0
     private var observers: [NSObjectProtocol] = []
     private var startExpanded = false
+    /// While a notch opened from the menu bar cat is up: a click in another app closes it.
+    private var clickAway: Any?
 
     init(app: AppModel) {
         self.app = app
@@ -174,6 +176,50 @@ final class NotchWindowController {
         mouseTimer = timer
     }
 
+    // MARK: Opened from the menu bar
+
+    /// The menu bar cat was clicked (2026-11-09): open the notch on the screen whose menu bar it is
+    /// in (the built-in one when that screen has no panel), or close it if it is open. The cursor is
+    /// up in the menu bar, not over the notch, so leaving does not close it; a click anywhere else
+    /// does, or hovering over it and leaving as usual.
+    func toggle(on nsScreen: NSScreen?) {
+        let id = nsScreen.flatMap(Self.displayID)
+        let target = screens.first { $0.displayID == id }
+            ?? screens.first { $0.model.geometry.hasPhysicalNotch }
+            ?? screens.first
+        guard let target else { return }
+        if target.model.isExpanded {
+            target.model.collapse()
+        } else {
+            for screen in screens where screen !== target { screen.model.collapse() }
+            target.model.expand()
+            watchClickAway()
+        }
+        app.monitor.setStripVisible(screens.contains { $0.model.isExpanded })
+        scheduleMouseTimer(Self.fastInterval)
+    }
+
+    private func watchClickAway() {
+        guard clickAway == nil else { return }
+        // Global monitors see clicks meant for other apps only (no permission needed for the mouse);
+        // clicks on the notch or the cat itself go to NotchAI and are not seen here.
+        clickAway = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for screen in self.screens where screen.model.isExpanded && !screen.model.isHovering
+                    && !screen.model.keepsOpen && !screen.model.isPinned {
+                    screen.model.collapse()
+                }
+                self.stopClickAway()
+            }
+        }
+    }
+
+    private func stopClickAway() {
+        if let clickAway { NSEvent.removeMonitor(clickAway) }
+        clickAway = nil
+    }
+
     /// The cursor is on one screen at a time, so at most one panel reacts to it.
     private func trackMouse() {
         let location = NSEvent.mouseLocation
@@ -191,6 +237,9 @@ final class NotchWindowController {
                 near = true
             }
         }
+        let anyOpen = screens.contains { $0.model.isExpanded }
+        app.monitor.setStripVisible(anyOpen)
+        if !anyOpen, clickAway != nil { stopClickAway() }
         let wanted = near ? Self.fastInterval : Self.slowInterval
         if wanted != mouseInterval { scheduleMouseTimer(wanted) }
     }

@@ -5,10 +5,11 @@ import Testing
 
 @MainActor
 struct NotchFeaturesTests {
-    /// 「자주 가는 사이트 정도는 써. 그 외엔 잘 안 씀」 (2026-11-01).
-    @Test func onlyTheSitesStartShown() {
+    /// 「자주 가는 사이트 정도는 써. 그 외엔 잘 안 씀」 (2026-11-01). The monitor and the menu bar cat
+    /// replace Stats and RunCat, which were always on (2026-11-09).
+    @Test func onlyTheSitesTheMonitorAndTheCatStartShown() {
         let features = NotchFeatures(defaults: nil)
-        #expect(features.enabled == [.launcher])
+        #expect(features.enabled == [.launcher, .monitor, .runCat])
         #expect(features.deskTabs.isEmpty)
         #expect(!features.hasLeftColumn)
     }
@@ -29,9 +30,11 @@ struct NotchFeaturesTests {
         #expect(features.hasLeftColumn)
 
         let reopened = NotchFeatures(defaults: defaults)
-        #expect(reopened.enabled == [.timer, .music, .launcher])
+        #expect(reopened.enabled == [.timer, .music, .launcher, .monitor, .runCat])
         reopened.set(.timer, false)
         reopened.set(.launcher, false)   // switched off stays off
+        reopened.set(.monitor, false)
+        reopened.set(.runCat, false)
         #expect(NotchFeatures(defaults: defaults).enabled == [.music])
     }
 
@@ -48,7 +51,9 @@ struct NotchFeaturesTests {
 struct PanelLayoutTests {
     /// 「노치 화면 아까처럼 더 크게」: with Jarvis on the left, the panel has its old size.
     @Test func withJarvisThePanelIsTheOldSize() {
-        let layout = AppModel.layout(features: NotchFeatures(defaults: nil), jarvis: true)
+        let features = NotchFeatures(defaults: nil)
+        features.set(.monitor, false)
+        let layout = AppModel.layout(features: features, jarvis: true)
         #expect(layout.body == AppModel.panelSize)
         #expect(layout.body == CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight))
         #expect(layout.narrowWing == NotchGeometry.compactWingWidth)
@@ -56,6 +61,7 @@ struct PanelLayoutTests {
 
     @Test func withoutJarvisOnlyTheRightColumnRemains() {
         let features = NotchFeatures(defaults: nil)
+        features.set(.monitor, false)
         let sites = AppModel.layout(features: features, jarvis: false)
         #expect(sites.body.width < AppModel.panelSize.width)
         features.set(.launcher, false)
@@ -63,6 +69,26 @@ struct PanelLayoutTests {
         #expect(recorderOnly.body.height < sites.body.height)
         features.set(.calendar, true)
         #expect(AppModel.layout(features: features, jarvis: false).body == AppModel.panelSize)
+    }
+
+    /// The monitor strip goes under everything else: the panel grows by the strip, nothing shrinks
+    /// (2026-11-09). One line across the full panel, two lines in the narrow one.
+    @Test func theMonitorStripAddsItsOwnHeight() {
+        let features = NotchFeatures(defaults: nil)
+        let withStrip = AppModel.layout(features: features, jarvis: true)
+        #expect(withStrip.body.width == AppModel.panelSize.width)
+        #expect(withStrip.body.height == AppModel.panelSize.height + AppModel.monitorStripHeight(stacked: false))
+        #expect(AppModel.monitorStripHeight(stacked: false)
+                == MonitorStrip.gap * 2 + 1 + MonitorStrip.height)
+
+        let narrowWithStrip = AppModel.layout(features: features, jarvis: false)
+        features.set(.monitor, false)
+        let narrow = AppModel.layout(features: features, jarvis: false)
+        #expect(narrowWithStrip.body.height == narrow.body.height + AppModel.monitorStripHeight(stacked: true))
+        #expect(AppModel.monitorStripHeight(stacked: true) > AppModel.monitorStripHeight(stacked: false))
+        // The menu bar cat changes nothing in the notch.
+        features.set(.runCat, false)
+        #expect(AppModel.layout(features: features, jarvis: false) == narrow)
     }
 
     @Test func theCharactersWidenTheWings() {

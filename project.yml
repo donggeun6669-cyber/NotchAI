@@ -158,6 +158,7 @@ targets:
           - "Services/JarvisVoiceWire.swift"
           - "Services/GlobalHoldHotKey.swift"
           - "Views/JarvisVoiceViews.swift"
+          - "SystemMonitor/**"
       - path: NotchDesk
         excludes:
           - "Distribution/**"

@@ -27,6 +27,11 @@ final class AppModel {
     @ObservationIgnored private var talkKey: GlobalHoldHotKey?
     /// What is shown, and so what runs.
     let features: NotchFeatures
+    /// CPU · memory · network · temperature, shared by the menu bar cat and the notch's strip.
+    let monitor = SystemMonitor()
+    @ObservationIgnored private var cat: RunCatStatusItem?
+    /// The cat was clicked: open or close the notch on that screen (set by the app delegate).
+    @ObservationIgnored var onCatClick: ((NSScreen?) -> Void)?
 
     var recorder: RecorderService { desk.recorder }
 
@@ -87,6 +92,8 @@ final class AppModel {
         for feature in features.enabled { switched(feature, on: true, resize: false) }
         if !features.deskTabs.contains(desk.tab), let first = features.deskTabs.first { desk.tab = first }
         jarvis.start()   // polls on its own clock, with its own back-off
+        monitor.onCPU = { [weak self] cpu in self?.cat?.update(cpu: cpu) }
+        updateMonitor()
         updateTalkKey()
         pollAll()
         let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -108,6 +115,7 @@ final class AppModel {
             default: break
             }
         }
+        if feature == .monitor || feature == .runCat { updateMonitor() }
         if !on, feature == .music {
             desk.music.stop()
             started.remove(.music)
@@ -118,6 +126,21 @@ final class AppModel {
             desk.tab = tab
         }
         if resize { resizePanels() }
+    }
+
+    /// Puts the cat in the menu bar or takes it out, and tells the monitor what to measure.
+    private func updateMonitor() {
+        let catOn = features.isOn(.runCat)
+        if catOn, cat == nil {
+            cat = RunCatStatusItem()
+            cat?.onClick = { [weak self] screen in self?.onCatClick?(screen) }
+            cat?.onHide = { [weak self] in self?.features.set(.runCat, false) }
+            if let cpu = monitor.cpu { cat?.update(cpu: cpu) }
+        } else if !catOn, let cat {
+            cat.remove()
+            self.cat = nil
+        }
+        monitor.configure(cat: catOn, strip: features.isOn(.monitor))
     }
 
     /// Something that changes the panel's size was switched (a part, or Jarvis's address).
@@ -149,13 +172,19 @@ final class AppModel {
     static let launcherHeight: CGFloat = 96
     static let agentsHeight: CGFloat = 58
 
+    /// The strip and the divider above it (2026-11-09). Two lines when only the right column shows.
+    static func monitorStripHeight(stacked: Bool) -> CGFloat {
+        MonitorStrip.gap * 2 + 1 + (stacked ? MonitorStrip.stackedHeight : MonitorStrip.height)
+    }
+
     static func layout(features: NotchFeatures, jarvis: Bool) -> NotchLayout {
         let agents = features.isOn(.agents)
         // The characters share the wings with the recorder's mark and Jarvis's light.
         var layout = NotchLayout(narrowWing: agents ? 54 : NotchGeometry.compactWingWidth,
                                  clockWing: agents ? 96 : NotchGeometry.clockWingWidth,
                                  wideWing: agents ? 130 : 112, body: panelSize)
-        if !jarvis && !features.hasLeftColumn {
+        let narrow = !jarvis && !features.hasLeftColumn
+        if narrow {
             let gap = sectionSpacing * 2 + 1
             var height = recorderHeight
             if features.isOn(.launcher) { height += gap + launcherHeight }
@@ -163,6 +192,8 @@ final class AppModel {
             layout.body = CGSize(width: rightColumnWidth + panelPadding.horizontal * 2,
                                  height: panelPadding.top + height + panelPadding.bottom)
         }
+        // The monitor strip is added below what was there, so nothing above it gets smaller.
+        if features.isOn(.monitor) { layout.body.height += monitorStripHeight(stacked: narrow) }
         return layout
     }
 }

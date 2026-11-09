@@ -25,6 +25,48 @@ struct ExpandedNotchView: View {
     }
 
     var body: some View {
+        VStack(spacing: MonitorStrip.gap) {
+            columns
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // CPU · temperature · memory · network under everything else (2026-11-09).
+            if features.isOn(.monitor) {
+                Divider().overlay(.white.opacity(0.1))
+                MonitorStrip(monitor: app.monitor, stacked: !hasLeft)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, AppModel.panelPadding.horizontal)
+        .padding(.top, AppModel.panelPadding.top)
+        .padding(.bottom, AppModel.panelPadding.bottom)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            if isDropTarget, features.isOn(.shelf) {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(accent.opacity(0.8), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                    .padding(6)
+            }
+        }
+        // Files dropped anywhere on the panel land on the shelf, when the shelf is on.
+        .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+            guard features.isOn(.shelf) else { return false }   // the shelf is hidden
+            Task { @MainActor in
+                var urls: [URL] = []
+                for item in providers {
+                    if let url = try? await item.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
+                       let decoded = URL(dataRepresentation: url, relativeTo: nil) {
+                        urls.append(decoded)
+                    }
+                }
+                guard !urls.isEmpty else { return }
+                app.desk.shelf.add(urls)
+                app.desk.tab = .shelf
+            }
+            return true
+        }
+    }
+
+    /// Jarvis (or the calendar) on the left, the recorder and the sites on the right.
+    private var columns: some View {
         HStack(alignment: .top, spacing: 14) {
             if hasLeft {
                 VStack(alignment: .leading, spacing: 8) {
@@ -66,35 +108,6 @@ struct ExpandedNotchView: View {
             }
             .frame(width: AppModel.rightColumnWidth)
             .frame(maxHeight: .infinity, alignment: .top)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, AppModel.panelPadding.horizontal)
-        .padding(.top, AppModel.panelPadding.top)
-        .padding(.bottom, AppModel.panelPadding.bottom)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            if isDropTarget, features.isOn(.shelf) {
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(accent.opacity(0.8), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                    .padding(6)
-            }
-        }
-        // Files dropped anywhere on the panel land on the shelf, when the shelf is on.
-        .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
-            guard features.isOn(.shelf) else { return false }   // the shelf is hidden
-            Task { @MainActor in
-                var urls: [URL] = []
-                for item in providers {
-                    if let url = try? await item.loadItem(forTypeIdentifier: UTType.fileURL.identifier) as? Data,
-                       let decoded = URL(dataRepresentation: url, relativeTo: nil) {
-                        urls.append(decoded)
-                    }
-                }
-                guard !urls.isEmpty else { return }
-                app.desk.shelf.add(urls)
-                app.desk.tab = .shelf
-            }
-            return true
         }
     }
 

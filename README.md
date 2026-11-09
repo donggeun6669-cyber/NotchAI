@@ -19,15 +19,34 @@
 | **AI 에이전트 상태** | Claude Code · Codex 세션을 감지해 상태를 캐릭터로 표시. 승인을 기다리면 노란 「!」. 누르면 해당 앱이 열림 | 숨김 |
 | **달력 · 오늘 할 일** | 3주 달력과 오늘 목록. macOS 미리 알림을 직접 읽어 체크하면 바로 빠짐 | 숨김 |
 | **자주 가는 곳** | 사이트 · 폴더 · 파일을 한 번에 열기. 노치에 끌어다 놓으면 추가 | 켜짐 |
+| **시스템 모니터** | 노치를 펼치면 맨 아래 한 줄에 CPU · 온도 · RAM · 네트워크(↓ ↑). 노치가 접혀 있으면 안 보임 | 켜짐 |
+| **메뉴바 고양이** | [RunCat Neo](https://github.com/runcat-dev/RunCatNeo)의 고양이가 CPU 사용률만큼 빨리 달림. 누르면 노치가 열리고 닫힘, 오른쪽 클릭에 숨기기 | 켜짐 |
 | **그 밖에** | 지금 재생 중인 음악, 클립보드, 파일 선반, 집중 타이머 | 숨김 |
 
 ## 기술 구성
 
 - **Swift 6 · SwiftUI · AppKit** (`NSPanel`로 노치에 붙는 패널) · Observation
 - **XcodeGen** — `project.yml`에서 Xcode 프로젝트를 만듭니다
-- **Swift Testing** — 단위 테스트 221개 (`NotchAITests/`)
+- **Swift Testing** — 단위 테스트 243개 (`NotchAITests/`)
 - 음성 전사: [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (`large-v3-turbo` 모델)
 - 재생 정보: [mediaremote-adapter](Vendor/mediaremote-adapter) (BSD-3, 원저작자 라이선스 포함)
+- 메뉴바 고양이: [RunCat Neo](https://github.com/runcat-dev/RunCatNeo) (Apache 2.0) · CPU·메모리 계산: [SystemInfoKit](https://github.com/Kyome22/SystemInfoKit) (Apache 2.0) · 온도 센서 목록: [Stats](https://github.com/exelban/stats) (MIT) — 자세한 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+
+## 시스템 모니터 · 메뉴바 고양이 (2026-11-09)
+
+Stats와 RunCat Neo를 따로 켜 두던 것을 NotchAI 하나로 합쳤습니다. 측정은 한 곳(`SystemMonitor`)에서 1초에 한 번만 하고,
+고양이와 노치가 같은 값을 씁니다.
+
+| 지표 | 무엇을 · 어떻게 | 주기 |
+| --- | --- | --- |
+| CPU | 전체 코어 사용률 = (user + system) ÷ 전체 tick (`host_cpu_load_info`). 고양이 속도 = CPU% ÷ 5 (1–20배, RunCat Neo 그대로) | 1초 · 항상 (고양이가 켜져 있으면) |
+| 온도 | CPU 코어 센서 중 가장 높은 값 (SMC, Stats 「Hottest CPU」와 같은 센서·계산). M5는 18개 키 중 응답하는 것. 모르는 칩·실패는 `N/A` | 3초 · 노치가 열려 있을 때만 |
+| RAM | 사용 = 앱 + 고정 + 압축 (캐시·파일 페이지는 뺌, 활성 상태 보기와 같은 계산) ÷ 전체. 메모리 압력이 「주의」면 노랑, 「위험」이면 빨강 | 1초 |
+| 네트워크 | 기본 경로 인터페이스(Wi-Fi 등) 바이트 카운터의 1초 변화량. 연결이 없으면 「연결 없음」(0 B/s와 구분) | 1초 |
+
+각 숫자 위에 마우스를 올리면 자세한 값(센서 개수, 사용 GB, 인터페이스 이름)이 나옵니다. `…` 메뉴 「노치에 보이기」에서
+시스템 모니터와 메뉴바 고양이를 각각 끌 수 있고, 둘 다 끄면 측정도 멈춥니다. 잠자기 동안은 측정을 멈추고, 깨어나면
+기준값을 버려 첫 숫자가 튀지 않게 합니다. 온도는 관리자 권한·도우미 프로그램 없이 읽습니다(읽기만, SMC에 쓰지 않음).
 
 ## 저장소 구조
 
@@ -37,6 +56,7 @@ NotchAI/            본체 앱
 ├── Character/      상태 캐릭터
 ├── Providers/      Claude · Codex 연결
 ├── Services/       감지 · 녹음 · 전사 · 달력 · 미리 알림 …
+├── SystemMonitor/  CPU · 온도 · RAM · 네트워크 측정, 메뉴바 고양이, 노치 하단 줄
 └── Views/          화면
 NotchDesk/          AI 연동을 뺀 일반 사용자용 버전
 LectureRecorder/    강의 녹음 · 전사만 떼어 낸 앱

@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `open NotchAI.app --args -startExpanded YES` keeps the panel open (for screenshots / debugging).
         controller.show(startExpanded: UserDefaults.standard.bool(forKey: "startExpanded"))
         notchController = controller
+        app.onCatClick = { [weak controller] screen in controller?.toggle(on: screen) }
         app.start()
         Logger(subsystem: "com.dongeun.NotchAI", category: "permissions")
             .info("accessibility (media keys) allowed: \(MediaKeys.isAllowed, privacy: .public)")

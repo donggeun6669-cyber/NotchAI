@@ -16,6 +16,10 @@ final class NotchFeatures {
         case timer
         case launcher
         case agents
+        /// CPU · temperature · memory · network along the bottom of the open notch (2026-11-09).
+        case monitor
+        /// RunCat Neo's cat in the menu bar, running as fast as the CPU is busy (2026-11-09).
+        case runCat
 
         var id: String { rawValue }
 
@@ -28,11 +32,14 @@ final class NotchFeatures {
             case .timer: "타이머"
             case .launcher: "자주 가는 곳"
             case .agents: "Claude · GPT 상태"
+            case .monitor: "시스템 모니터 (CPU · 온도 · RAM · 네트워크)"
+            case .runCat: "메뉴바 고양이 (CPU)"
             }
         }
 
-        /// Shown until the user says otherwise.
-        var isOnByDefault: Bool { self == .launcher }
+        /// Shown until the user says otherwise. The monitor and the cat replace Stats and RunCat,
+        /// which were always on (2026-11-09).
+        var isOnByDefault: Bool { self == .launcher || self == .monitor || self == .runCat }
 
         /// The desk tab this feature is, if it is one.
         var deskTab: DeskView.Tab? {
