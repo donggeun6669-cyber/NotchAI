@@ -261,6 +261,75 @@ struct JarvisServiceTests {
         #expect(await server.asked.last == "/jobs?limit=3")
     }
 
+    @Test func workroomAcceptsTheFirstRouteUnlessItIsMissing() async {
+        let prefix = "/proxy"
+        let path = prefix + "/workspace/workroom"
+        for reply in [FakeJarvis.Reply.ok(""), .status(401), .status(500), .down(.timedOut)] {
+            let server = FakeJarvis([path: reply])
+            let jarvis = JarvisService(transport: server, address: base + prefix + "/")
+            #expect(await jarvis.appDestination()?.absoluteString == base + path)
+            #expect(await server.asked == [prefix + "/workspace/tools/widget", path])
+        }
+    }
+
+    @Test func missingWorkroomProbesTheLegacyAppExactlyOnce() async {
+        let path = "/workspace/workroom"
+        let cases: [(FakeJarvis.Reply, String)] = [
+            (.ok(""), "/app"), (.down(.timedOut), "/app"), (.status(404), "/")
+        ]
+        for (reply, expected) in cases {
+            let server = FakeJarvis([path: .status(404), "/app": reply])
+            let jarvis = JarvisService(transport: server, address: base)
+            #expect(await jarvis.appDestination()?.absoluteString == base + expected)
+            #expect(await server.asked == ["/workspace/tools/widget", path, "/app"])
+        }
+    }
+
+    @Test func widgetOpensSourceTaskAndShowsItsCounts() async {
+        let id = "chat-11111111-2222-3333-4444-555555555555"
+        let link = "/workspace/workroom?task=" + id
+        let widget = #"{"active":2,"review":3,"done":9,"workroom_url":""# + link + #""}"#
+        let server = FakeJarvis(["/workspace/tools/widget": .ok(widget)])
+        let jarvis = JarvisService(transport: server, address: base)
+        #expect(await jarvis.appDestination()?.absoluteString == base + link)
+        #expect(jarvis.workroom?.active == 2 && jarvis.workroom?.review == 3 && jarvis.workroom?.done == 9)
+        #expect(await server.asked == ["/workspace/tools/widget"])
+    }
+
+    @Test func invalidOrUnavailableWidgetOpensOnlyTheConfiguredWorkroom() async {
+        let endpoint = "/workspace/tools/widget"
+        for reply in [FakeJarvis.Reply.ok(#"{"active":0,"review":0,"done":0,"workroom_url":"https://other.test/workspace/workroom"}"#),
+                      .ok("{}"), .status(403), .down(.timedOut)] {
+            let server = FakeJarvis([endpoint: reply])
+            let jarvis = JarvisService(transport: server, address: base)
+            #expect(await jarvis.appDestination()?.absoluteString == base + "/workspace/workroom")
+            #expect(await server.asked == [endpoint])
+        }
+    }
+
+    @Test func widgetLinksStayWithinTheWorkroom() throws {
+        let origin = try #require(URL(string: base))
+        let task = "/workspace/workroom?task=chat-11111111-2222-3333-4444-555555555555"
+        for raw in [base + task, base + ":443" + task, task] {
+            #expect(JarvisWorkroomWidget(active: 0, review: 1, done: 2, workroomURL: raw)
+                .destination(base: origin)?.absoluteString == base + task)
+        }
+        for raw in ["https://user@desk.example.ts.net" + task, "http://desk.example.ts.net" + task,
+                    base + ":444" + task, "//other.test" + task, "file:///workspace/workroom", "/app",
+                    task + "&next=other", task + "#section", "/workspace/workroom?task=main"] {
+            #expect(JarvisWorkroomWidget(active: 0, review: 1, done: 2, workroomURL: raw)
+                .destination(base: origin) == nil)
+        }
+        #expect(JarvisWorkroomWidget.parse(Data(#"{"active":-1,"review":0,"done":0,"workroom_url":"/workspace/workroom"}"#.utf8)) == nil)
+    }
+
+    @Test func openingChecksOnlyAConfiguredServer() async {
+        let server = FakeJarvis([:])
+        let jarvis = JarvisService(transport: server, address: "")
+        #expect(await jarvis.appDestination() == nil)
+        #expect(await server.asked.isEmpty)
+    }
+
     @Test func appFallsBackToTheBoardWhenMissing() throws {
         let root = try #require(URL(string: base))
         #expect(JarvisService.chatURL(base: root, appStatus: 200).absoluteString == base + "/app")
