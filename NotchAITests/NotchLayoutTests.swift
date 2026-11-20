@@ -50,12 +50,12 @@ struct NotchFeaturesTests {
 @MainActor
 struct PanelLayoutTests {
     /// 「노치 화면 아까처럼 더 크게」: with Jarvis on the left, the panel has its old size.
-    @Test func withJarvisThePanelIsTheOldSize() {
+    @Test func weekAndJarvisHaveRoomSideBySide() {
         let features = NotchFeatures(defaults: nil)
         features.set(.monitor, false)
         let layout = AppModel.layout(features: features, jarvis: true)
         #expect(layout.body == AppModel.panelSize)
-        #expect(layout.body == CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight))
+        #expect(layout.body == CGSize(width: 850, height: 408))
         #expect(layout.narrowWing == NotchGeometry.compactWingWidth)
     }
 

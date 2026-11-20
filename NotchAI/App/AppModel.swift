@@ -162,7 +162,7 @@ final class AppModel {
     /// The open panel (2026-11-01, 「노치 화면 아까처럼 더 크게」): Jarvis on the left where the
     /// calendar was, the recorder and the sites on the right — the size it had before. Without
     /// Jarvis or anything else for the left, just the right column.
-    static let panelSize = CGSize(width: NotchGeometry.minExpandedWidth, height: NotchGeometry.expandedBodyHeight)
+    static let panelSize = CGSize(width: 850, height: 408)
     static let rightColumnWidth: CGFloat = 236
     static let panelPadding = (horizontal: CGFloat(18), top: CGFloat(6), bottom: CGFloat(12))
     static let sectionSpacing: CGFloat = 8

@@ -325,6 +325,7 @@ final class JarvisService {
 
     private(set) var connection: JarvisConnection = .off
     private(set) var jobs: [JarvisJob] = []
+    private(set) var workroom: JarvisWorkroomWidget?
     /// When the server last answered.
     private(set) var lastAnswer: Date?
     private(set) var backoff = JarvisBackoff()
@@ -388,8 +389,9 @@ final class JarvisService {
     /// The panel opened: the job list should be fresh.
     func wantJobs() {
         jobsWanted = true
-        if isStarted, presence != nil {
-            Task { await refreshJobs() }
+        if isStarted, let base = baseURL {
+            Task { _ = await fetchWorkroom(base) }
+            if presence != nil { Task { await refreshJobs() } }
         }
     }
 
@@ -399,6 +401,7 @@ final class JarvisService {
         lastJobsFetch = nil
         jobsWanted = true
         jobs = []
+        workroom = nil
         lastAnswer = nil
         connection = baseURL == nil ? .off : .checking
     }
@@ -502,19 +505,41 @@ final class JarvisService {
 
     // MARK: Opening the app
 
-    /// The chat app, or the job board on a server that does not have `/app` yet.
+    /// Legacy servers offer the chat app or, on an explicit 404, the board at their root.
     static func chatURL(base: URL, appStatus: Int?) -> URL {
-        let app = URL(string: base.absoluteString + "/app") ?? base
-        return appStatus == 404 ? URL(string: base.absoluteString + "/") ?? base : app
+        if appStatus == 404 { return base.appending(path: "", directoryHint: .isDirectory) }
+        return base.appending(path: "app", directoryHint: .notDirectory)
     }
 
-    /// Opens Jarvis in the browser. Asks `/app` first so a server without it opens the board instead.
+    private func fetchWorkroom(_ base: URL) async -> (widget: JarvisWorkroomWidget?, status: Int?) {
+        let response = try? await transport.get(base.appending(path: "workspace/tools/widget",
+                                                               directoryHint: .notDirectory))
+        let widget = response.flatMap { data, status in
+            status == 200 ? JarvisWorkroomWidget.parse(data) : nil
+        }
+        if base == baseURL { workroom = widget }
+        return (widget, response?.1)
+    }
+
+    /// A timeout or an authorization error should open the requested page so the browser
+    /// can show the problem. Only a missing route justifies looking for an older interface.
+    func appDestination() async -> URL? {
+        guard let base = baseURL else { return nil }
+        let workroom = base.appending(path: "workspace/workroom", directoryHint: .notDirectory)
+        let summary = await fetchWorkroom(base)
+        guard baseURL == base else { return nil }
+        if let task = summary.widget?.destination(base: base) { return task }
+        guard summary.status == 404 else { return workroom }
+        guard (try? await transport.get(workroom))?.1 == 404 else { return workroom }
+
+        let app = Self.chatURL(base: base, appStatus: nil)
+        let legacyStatus = (try? await transport.get(app))?.1
+        return Self.chatURL(base: base, appStatus: legacyStatus)
+    }
+
     func openApp() {
-        guard let base = baseURL else { return }
         Task {
-            let status: Int?
-            if case .success((_, let code)) = await get(base, "/app") { status = code } else { status = nil }
-            NSWorkspace.shared.open(Self.chatURL(base: base, appStatus: status))
+            if let url = await appDestination() { NSWorkspace.shared.open(url) }
         }
     }
 }
